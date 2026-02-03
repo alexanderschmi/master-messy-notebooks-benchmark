@@ -22,7 +22,7 @@ def run_benchmark(notebooks):
         # We wrap the logic in an async function to capture variables correctly
         def process_single_run(m=model):
             # 1. Get the model's answer
-            answer = get_model_response(model=model["name"], notebooks=notebooks, temperature=TEMPERATURE)
+            answer = get_model_response(model=model["name"], api_key=model["key"], notebooks=notebooks, temperature=TEMPERATURE)
         
             
             return {
