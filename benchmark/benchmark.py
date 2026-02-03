@@ -1,15 +1,15 @@
 import pandas as pd
 from utils import get_model_response, load_notebooks
 import yaml
+from pathlib import Path
 
 # Load the configuration
-with open("benchmark/config.yaml", "r") as file:
+with open(Path("config.yaml")) as file:
     config = yaml.safe_load(file)
 
 # --- CONFIGURATION (Loaded from YAML) ---
 MODELS_TO_TEST = config["models"]
 TEMPERATURE = config["settings"]["temperature"]
-DATA = config["data"]
 
 def run_benchmark(notebooks):
     results = []
@@ -47,6 +47,6 @@ def run_benchmark(notebooks):
     print("\n✅ Results saved to 'llm_benchmark_results.csv'")
 
 if __name__ == "__main__":
-    notebooks = load_notebooks(DATA)
+    notebooks = load_notebooks(Path("../data"))
     print(notebooks)
     run_benchmark(notebooks=notebooks)
