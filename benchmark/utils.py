@@ -3,6 +3,7 @@ import nbformat
 import dspy
 import dspy_config
 from pathlib import Path
+import os
 
 
 def load_notebooks(path) -> List[str]:
@@ -16,9 +17,9 @@ def load_notebooks(path) -> List[str]:
     print(f"Loaded {len(nbs)} notebooks.")
     return nbs
 
-def get_model_response(model: str, api_key: str, notebooks:List[str], temperature: float):
+def get_model_response(model: str, notebooks:List[str], temperature: float) -> List[dspy.Prediction]:
     # 1. Global Configuration
-    lm = dspy.LM(model=model, api_key=api_key, temperature=temperature)
+    lm = dspy.LM(model=model, temperature=temperature)
     dspy.configure(lm=lm)
     
     module = dspy.Predict(dspy_config.CodeGenSignature)
