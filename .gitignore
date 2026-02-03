@@ -209,3 +209,4 @@ __marimo__/
 input/
 output/
 test.ipynb
+config.yaml
