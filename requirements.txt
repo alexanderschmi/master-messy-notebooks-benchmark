@@ -1,0 +1,14 @@
+datasets
+dspy
+matplotlib
+nltk
+numpy
+pandas
+radon
+scikit-learn
+seaborn
+torch
+tqdm
+transformers
+wordcloud
+xgboost

@@ -6,15 +6,13 @@ from typing import Optional
 class OutputSchema(BaseModel):
     requirements: Optional[str] = Field(
         default="",
-        desc="The requirements.txt")
+        desc="The full content of the requirements.txt file, listing all dependencies needed to run the scripts.")
     train: Optional[str] = Field(
         default="",
-        desc="The train.py")
+        desc="The full python code for train.py containing the model training script.")
     inference: Optional[str] = Field(
         default="",
-        desc="The inference.py, it should include a function inference that takes one "
-             "feature of the data set as input and returns the specific output (prediction, "
-             "classification, etc.)")
+        desc="The full python code for inference.py containing the model inference script. It should include a function inference that takes one feature of the data set as input and returns the specific output (prediction, classification, etc.)")
 
 
 class CodeGenSignature(dspy.Signature):
@@ -30,11 +28,6 @@ class CodeGenSignature(dspy.Signature):
     """
     notebook = dspy.InputField(desc="The Jupyter Notebook")
     output: OutputSchema = dspy.OutputField()
-
-
-# """Generate a requirements.txt, a train.py with specific dockerfile and an inference.py with specific dockerfile
-#     given a Jupyter Notebook. For the libraries use the newest version possible. Focus on documentation as well as
-#     correctness."""
 
 def set_prompt(prompt_text: str):
     """Dynamically sets the prompt instruction for the dspy Signature."""
