@@ -12,7 +12,8 @@ class OutputSchema(BaseModel):
         desc="The full python code for train.py containing the model training script.")
     inference: Optional[str] = Field(
         default="",
-        desc="The full python code for inference.py containing the model inference script. It should include a function inference that takes one feature of the data set as input and returns the specific output (prediction, classification, etc.)")
+        desc="The full python code for inference.py containing the model inference script. It should include a function " \
+            "inference(feature) that takes one feature of the data set as input and returns the model output.")
 
 
 class CodeGenSignature(dspy.Signature):
