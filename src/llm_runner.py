@@ -5,6 +5,7 @@ from src import dspy_config
 
 logger = logging.getLogger(__name__)
 
+
 def get_model_response(
     model: str,
     api_key: str,
@@ -15,7 +16,14 @@ def get_model_response(
 ) -> dict:
     """Query an LLM for each notebook and return the predictions."""
     logger.info(f"[{model}] Starting to process {len(notebooks)} notebooks")
-    lm_kwargs = dict(model=model, api_key=api_key, temperature=temperature, num_retries=0, timeout=120, max_tokens=8192)
+    lm_kwargs = dict(
+        model=model,
+        api_key=api_key,
+        temperature=temperature,
+        num_retries=0,
+        timeout=120,
+        max_tokens=8192,
+    )
     if api_base:
         lm_kwargs["api_base"] = api_base
 

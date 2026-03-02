@@ -5,6 +5,7 @@ from typing import List
 
 logger = logging.getLogger(__name__)
 
+
 def load_notebooks(path) -> List[tuple[str, str]]:
     nbs = []
     for filepath in Path(path).rglob("*.ipynb"):
@@ -22,16 +23,16 @@ def load_notebooks(path) -> List[tuple[str, str]]:
 
 def parse_notebook(file_path):
     """Reads a .ipynb file and converts it to a readable string format."""
-    with open(file_path, 'r', encoding='utf-8') as f:
+    with open(file_path, "r", encoding="utf-8") as f:
         nb_data = json.load(f)
 
     extracted_text = []
-    for cell in nb_data.get('cells', []):
-        cell_type = cell.get('cell_type')
-        source = "".join(cell.get('source', []))
-        if cell_type == 'code':
+    for cell in nb_data.get("cells", []):
+        cell_type = cell.get("cell_type")
+        source = "".join(cell.get("source", []))
+        if cell_type == "code":
             extracted_text.append(f"--- CODE CELL ---\n{source}\n")
-        elif cell_type == 'markdown':
+        elif cell_type == "markdown":
             extracted_text.append(f"--- MARKDOWN CELL ---\n{source}\n")
 
     return "\n".join(extracted_text)
