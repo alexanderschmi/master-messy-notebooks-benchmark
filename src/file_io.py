@@ -16,6 +16,7 @@ def sanitize_json_output(output_str):
 
 
 def generate_files_from_answers(answers, output_dir: str, model: str):
+    """Generates files from answers."""
     if "error" in answers:
         logger.error(f"Error: {answers['error']}")
     else:

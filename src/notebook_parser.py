@@ -7,6 +7,7 @@ logger = logging.getLogger(__name__)
 
 
 def load_notebooks(path) -> List[tuple[str, str]]:
+    """Loads all notebooks from a directory."""
     nbs = []
     for filepath in Path(path).rglob("*.ipynb"):
         nb_content = parse_notebook(filepath)

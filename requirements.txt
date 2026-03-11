@@ -12,3 +12,10 @@ tqdm
 transformers
 wordcloud
 xgboost
+pydantic
+scipy
+catboost
+lightgbm
+peft
+seqeval
+PyYAML

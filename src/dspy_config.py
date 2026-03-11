@@ -4,6 +4,7 @@ from typing import Optional
 
 
 class OutputSchema(BaseModel):
+    """Output schema for the code generation task."""
     requirements: Optional[str] = Field(
         default="",
         desc="The full content of the requirements.txt file, listing all dependencies needed to run the scripts.",
@@ -14,8 +15,8 @@ class OutputSchema(BaseModel):
     )
     inference: Optional[str] = Field(
         default="",
-        desc="The full python code for inference.py containing the model inference script. It should include a function "
-        "inference(feature) that takes one feature of the data set as input and returns the model output.",
+        desc="The full python code for inference.py containing the model inference script. It should include a function"
+        " inference(feature) that takes one feature of the data set as input and returns the model output.",
     )
 
 

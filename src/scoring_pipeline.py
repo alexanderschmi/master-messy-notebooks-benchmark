@@ -53,14 +53,7 @@ def compare_artifacts(original_output_dir, generated_dir):
             "details": "No original artifacts to compare against.",
         }
 
-    # We check if the generated dir has the same files somewhere.
-    # train.py might generate them in `generated_dir` or `generated_dir/output`.
-    # Let's check both or just scan the generated_dir for matching relative paths.
     generated_files = get_dir_structure(generated_dir)
-
-    # train.py, inference.py, requirements.txt, input/ are given, so we ignore them for comparison maybe?
-    # Or just check if the original files are a subset of the generated files.
-    # A more robust check: does the generated dir contain the same file names?
     original_basenames = {Path(p).name for p in original_files}
     generated_basenames = {Path(p).name for p in generated_files}
 
@@ -96,7 +89,6 @@ def test_generated_inference(inference_py_path, model_dir, prompt):
 
     prompt_str = json.dumps(prompt)
 
-    # We write a small runner script to import their inference.py and call inference()
     runner_code = f"""
 import sys
 import json
@@ -154,7 +146,6 @@ def run_dynamic_analysis(train_py_path, original_output_dir, model_dir):
     Executes train.py securely (subprocess) without installing requirements.
     Compares the generated artifacts to the original ones.
     """
-    # Record generated_files before
     get_dir_structure(model_dir)
 
     logger.info(f"Running dynamic analysis on {train_py_path}...")
@@ -210,7 +201,6 @@ def score_pipeline(output_dir, data_dir, target_nb=None, target_model=None):
             continue
         original_output_dir = data_path / nb_id / "output"
 
-        # Find all directories within nb_dir that contain a train.py
         model_dirs = [p.parent for p in nb_dir.rglob("train.py")]
 
         for model_dir in model_dirs:
@@ -237,6 +227,7 @@ def score_pipeline(output_dir, data_dir, target_nb=None, target_model=None):
                 "own_inference_success": False,
                 "llm_inference_success": False,
                 "outputs_match": False,
+                "model_score": 0.0,
             }
 
             # Static Analysis
@@ -283,12 +274,35 @@ def score_pipeline(output_dir, data_dir, target_nb=None, target_model=None):
                     else:
                         row["outputs_match"] = False
 
+            # Calculate final model score
+            score = 0.0
+            if row.get("train_syntax_valid", False): score += 10.0
+            if row.get("inference_syntax_valid", False): score += 10.0
+            if row.get("train_execution_success", False): score += 30.0
+            score += 10.0 * row.get("artifact_match_score", 0.0)
+            if row.get("own_inference_success", False): score += 20.0
+            if row.get("llm_inference_success", False): score += 10.0
+            if row.get("outputs_match", False): score += 10.0
+            
+            row["model_score"] = round(score, 2)
+
             results.append(row)
 
     df = pd.DataFrame(results)
+    
+    # Save raw detailed report
     report_path = output_path / "scoring_report.csv"
     df.to_csv(report_path, index=False)
-    logger.info(f"Scoring complete. Report saved to {report_path}")
+    logger.info(f"Scoring complete. Detailed report saved to {report_path}")
+
+    # Calculate aggregated report (average score per model)
+    if not df.empty and "model_score" in df.columns:
+        agg_df = df.groupby("model", as_index=False)["model_score"].mean()
+        # Sort by best score descending
+        agg_df = agg_df.sort_values(by="model_score", ascending=False).reset_index(drop=True)
+        agg_report_path = output_path / "scoring_report_aggregated.csv"
+        agg_df.to_csv(agg_report_path, index=False)
+        logger.info(f"Aggregated scoring complete. Average model scores saved to {agg_report_path}")
 
 
 if __name__ == "__main__":
