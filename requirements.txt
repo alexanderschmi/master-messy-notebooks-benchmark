@@ -18,4 +18,6 @@ catboost
 lightgbm
 peft
 seqeval
-PyYAML
+envyaml
+openhands
+mini-swe-agent

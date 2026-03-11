@@ -1,5 +1,5 @@
 import argparse
-import yaml
+from envyaml import EnvYAML
 import logging
 import logging.handlers
 import multiprocessing
@@ -129,8 +129,7 @@ if __name__ == "__main__":
 
     config_path = BASE_DIR / args.config
     try:
-        with open(config_path) as file:
-            config = yaml.safe_load(file)
+        config = EnvYAML(config_path)
     except FileNotFoundError:
         logger.error(f"Config file {config_path} not found.")
         sys.exit(1)
