@@ -12,7 +12,7 @@ from tqdm import tqdm
 from src import dspy_config
 from src.notebook_parser import load_notebooks
 from src.llm_runner import get_model_response
-from src.file_io import generate_files_from_answers
+from src.openhands_runner import get_openhands_response
 from src.scoring_pipeline import score_pipeline
 
 logger = logging.getLogger(__name__)
@@ -25,48 +25,69 @@ def worker_init(q):
     root_logger.handlers.clear()
     root_logger.addHandler(qh)
 
-def proxy(params, notebooks, temperature, use_cot):
+def proxy(params, notebook, temperature, use_cot, complexity, save_history, output_dir, run_id):
+    provider = params.get("provider", "openai")
     model_name = params.get("model", params.get("name", "unknown_model"))
+    runner = params.get("runner", "simple")
+    nb_id, _ = notebook
+
+    base_path = Path(output_dir) / f"{nb_id}/{runner}/{model_name}_complexity_{complexity}_run_{run_id}"
+    if base_path.exists():
+        logger.info(f"Skipping already generated: {base_path}")
+    
     try:
-        response = get_model_response(
-            notebooks=notebooks,
-            temperature=temperature,
-            api_base=params.get("api_base"),
-            use_cot=use_cot,
-            model=params.get("model", ""),
-            api_key=params.get("api_key", ""),
-        )
-        return model_name, response
+        if runner == "agentic":
+            get_openhands_response(
+                model=model_name,
+                provider=provider,
+                api_key=params.get("api_key", ""),
+                notebook=notebook,
+                prompt=params.get("prompt"),
+                api_base=params.get("api_base"),
+                output_dir=output_dir,
+                complexity=complexity,
+                run=run_id,
+            )
+        else:
+            get_model_response(
+                notebook=notebook,
+                temperature=temperature,
+                api_base=params.get("api_base"),
+                use_cot=use_cot,
+                model=model_name,
+                provider=provider,
+                api_key=params.get("api_key", ""),
+                save_history=save_history,
+                output_dir=output_dir,
+                complexity=complexity,
+                run=run_id,
+            )
 
     except Exception as e:
         error_msg = f"Failed on {model_name}: {type(e).__name__} - {str(e)}"
         logger.warning(error_msg)
 
-        return model_name, {"error": error_msg}
 
-
-def run_benchmark(notebooks, models_to_test, temperature, output_dir, use_cot, log_queue=None):
-    logger.info(f"Starting Benchmark on {len(models_to_test)} models ...\n")
-
-    answers = []
+def run_benchmark(notebooks, models_to_test, temperature, output_dir, use_cot, complexity, save_history, runs, log_queue=None):
+    logger.info(f"Starting Benchmark on {len(models_to_test)} models, {len(notebooks)} notebooks for {runs} runs ...\n")
 
     with concurrent.futures.ProcessPoolExecutor(
-        max_workers=10,
+        max_workers=5,
         initializer=worker_init if log_queue else None,
         initargs=(log_queue,) if log_queue else ()
     ) as executor:
-        answers = list(tqdm(executor.map(proxy,
-                                         models_to_test,
-                                         itertools.repeat(notebooks),
-                                         itertools.repeat(temperature),
-                                         itertools.repeat(use_cot)),
-                            total=len(models_to_test)))
-
-    logger.info("Prompts complete")
-    logger.info("Saving files in output folder...\n")
-
-    for m, answer in answers:
-        generate_files_from_answers(answer, output_dir, m)
+        for notebook in notebooks:
+            logger.info(f"Running models for notebook: {notebook[0]}...")
+            for run_id in range(1, runs + 1):
+                list(executor.map(proxy, 
+                             models_to_test, 
+                             itertools.repeat(notebook), 
+                             itertools.repeat(temperature), 
+                             itertools.repeat(use_cot), 
+                             itertools.repeat(complexity), 
+                             itertools.repeat(save_history), 
+                             itertools.repeat(output_dir),
+                             itertools.repeat(run_id)))
 
     logger.info("Generation complete")
 
@@ -74,9 +95,15 @@ def run_benchmark(notebooks, models_to_test, temperature, output_dir, use_cot, l
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Run the notebook benchmark.")
     parser.add_argument(
-        "--complexity",
+        "--runs",
         type=int,
         default=1,
+        help="Number of times to run the benchmark on the models."
+    )
+    parser.add_argument(
+        "--complexity",
+        type=str,
+        default='4',
         help="The complexity of the prompt to use (1-5)."
     )
     parser.add_argument(
@@ -106,6 +133,23 @@ if __name__ == "__main__":
         "--score",
         action="store_true",
         help="Run the scoring pipeline after generating the model outputs."
+    )
+    parser.add_argument(
+        "--score-only",
+        action="store_true",
+        help="Only run the scoring pipeline without running the model benchmark."
+    )
+    parser.add_argument(
+        "--runner",
+        type=str,
+        choices=["simple", "agentic"],
+        default="simple",
+        help="The runner engine to use."
+    )
+    parser.add_argument(
+        "--save-history",
+        action="store_true",
+        help="Save the prompt and response history for each notebook to a history.json file."
     )
     args = parser.parse_args()
 
@@ -140,16 +184,21 @@ if __name__ == "__main__":
         if not models_to_test:
             logger.error(f"Model {args.model} not found in config.")
             sys.exit(1)
+            
+    # Modify models_to_test to include runner and prompt context
+    for m in models_to_test:
+        m["runner"] = args.runner
 
     temperature = config.get("settings", {}).get("temperature", 0.1)
     complexity = args.complexity
 
     try:
         prompt_file_path = BASE_DIR / "configs" / "prompt.yml"
-        with open(prompt_file_path, "r", encoding="utf-8") as prompt_file:
-            prompts = yaml.safe_load(prompt_file)
+        prompts = EnvYAML(str(prompt_file_path))
         if complexity in prompts:
             dspy_config.set_prompt(prompts[complexity])
+            for m in models_to_test:
+                m["prompt"] = prompts[complexity]
             logger.info(f"Loaded prompt for complexity: '{complexity}'")
         else:
             logger.warning(f"Complexity '{complexity}' not found in prompt.yml. Using default prompt.")
@@ -164,11 +213,29 @@ if __name__ == "__main__":
             logger.error(f"Notebook {args.notebook} not found in data dir.")
 
     output_dir = str(BASE_DIR / "output")
-    logger.info(f"Running models: {[m.get('model', m.get('name')) for m in models_to_test]} against {[nb[0] for nb in notebooks]}")
-    run_benchmark(notebooks=notebooks, models_to_test=models_to_test, temperature=temperature, output_dir=output_dir, use_cot=args.cot, log_queue=log_queue)
+    
+    save_history = args.save_history or config.get("settings", {}).get("save_history", False)
 
-    if args.score:
+    if not args.score_only:
+        logger.info(f"Running models: {[m.get('model', m.get('name')) for m in models_to_test]} against {[nb[0] for nb in notebooks]}")
+        run_benchmark(notebooks=notebooks, models_to_test=models_to_test, temperature=temperature, output_dir=output_dir, use_cot=args.cot, complexity=complexity, save_history=save_history, runs=args.runs, log_queue=log_queue)
+    else:
+        logger.info("Score-only mode enabled. Skipping model execution.")
+
+    if args.score or args.score_only:
         logger.info("Initializing scoring pipeline...")
-        score_pipeline(output_dir, data_dir)
+        # Only score what was selected
+        target_nb = args.notebook if args.notebook else None
+        target_model = args.model if args.model else None
+        
+        score_pipeline(
+            output_dir=output_dir, 
+            data_dir=data_dir, 
+            target_nb=target_nb, 
+            target_model=target_model,
+            target_complexity=complexity,
+            target_runner=args.runner
+        )
         
     queue_listener.stop()
+

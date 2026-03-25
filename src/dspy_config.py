@@ -7,16 +7,16 @@ class OutputSchema(BaseModel):
     """Output schema for the code generation task."""
     requirements: Optional[str] = Field(
         default="",
-        desc="The full content of the requirements.txt file, listing all dependencies needed to run the scripts.",
+        #desc="The full content of the requirements.txt file, listing all dependencies needed to run the scripts.",
     )
     train: Optional[str] = Field(
         default="",
-        desc="The full python code for train.py containing the model training script.",
+        #desc="The full python code for train.py containing the model training script.",
     )
     inference: Optional[str] = Field(
         default="",
-        desc="The full python code for inference.py containing the model inference script. It should include a function"
-        " inference(feature) that takes one feature of the data set as input and returns the model output.",
+        #desc="The full python code for inference.py containing the model inference script. It should include a function"
+        #" inference(feature) that takes one feature of the data set as input and returns the model output.",
     )
 
 
@@ -33,7 +33,9 @@ class CodeGenSignature(dspy.Signature):
     """
 
     notebook = dspy.InputField(desc="The Jupyter Notebook")
-    output: OutputSchema = dspy.OutputField()
+    train: Optional[str] = dspy.OutputField(default="", desc="Full python code for train.py")
+    inference: Optional[str] = dspy.OutputField(default="", desc="Full python code for inference.py")
+    requirements: Optional[str] = dspy.OutputField(default="", desc="Full requirements.txt")
 
 
 def set_prompt(prompt_text: str):

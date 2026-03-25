@@ -1,76 +1,85 @@
 settings:
   temperature: 0.1
+  save_history: false
 
 models:
-#  - model: gemini/gemini-2.5-flash
-#    api_key: ${GEMINI_API_KEY}
-#    api_base: "https://generativelanguage.googleapis.com/v1beta"
-  - model: openai/apertus-70b-instruct-2509
+  - provider: gemini
+    model: gemini-2.5-flash
+    api_key: ${GEMINI_API_KEY}
+    api_base: "https://generativelanguage.googleapis.com/v1beta"
+  - provider: openai
+    model: apertus-70b-instruct-2509
     api_key: ${CHATAI_API_KEY}
     api_base: "https://chat-ai.academiccloud.de/v1"
-  - model: openai/devstral-2-123b-instruct-2512
+  - provider: openai
+    model: devstral-2-123b-instruct-2512
     api_key: ${CHATAI_API_KEY}
     api_base: "https://chat-ai.academiccloud.de/v1"
-  - model: openai/deepseek-r1-distill-llama-70b
+  - provider: openai
+    model: deepseek-r1-distill-llama-70b
     api_key: ${CHATAI_API_KEY}
     api_base: "https://chat-ai.academiccloud.de/v1"
-  - model: openai/gemma-3-27b-it
+  - provider: openai
+    model: gemma-3-27b-it
     api_key: ${CHATAI_API_KEY}
     api_base: "https://chat-ai.academiccloud.de/v1"
-  - model: openai/glm-4.7
+  - provider: openai
+    model: glm-4.7
     api_key: ${CHATAI_API_KEY}
     api_base: "https://chat-ai.academiccloud.de/v1"
-  - model: openai/internvl3.5-30b-a3b
+  - provider: openai
+    model: internvl3.5-30b-a3b
     api_key: ${CHATAI_API_KEY}
     api_base: "https://chat-ai.academiccloud.de/v1"
-  - model: openai/llama-3.1-sauerkrautlm-70b-instruct
+  - provider: openai
+    model: llama-3.1-sauerkrautlm-70b-instruct
     api_key: ${CHATAI_API_KEY}
     api_base: "https://chat-ai.academiccloud.de/v1"
-  - model: openai/medgemma-27b-it
+  - provider: openai
+    model: medgemma-27b-it
     api_key: ${CHATAI_API_KEY}
     api_base: "https://chat-ai.academiccloud.de/v1"
-  - model: openai/meta-llama-3.1-8b-instruct
+  - provider: openai
+    model: meta-llama-3.1-8b-instruct
     api_key: ${CHATAI_API_KEY}
     api_base: "https://chat-ai.academiccloud.de/v1"
-  - model: openai/llama-3.3-70b-instruct
+  - provider: openai
+    model: llama-3.3-70b-instruct
     api_key: ${CHATAI_API_KEY}
     api_base: "https://chat-ai.academiccloud.de/v1"
-  - model: openai/mistral-large-3-675b-instruct-2512
+  - provider: openai
+    model: mistral-large-3-675b-instruct-2512
     api_key: ${CHATAI_API_KEY}
     api_base: "https://chat-ai.academiccloud.de/v1"
-  - model: openai/openai-gpt-oss-120b
+  - provider: openai
+    model: openai-gpt-oss-120b
     api_key: ${CHATAI_API_KEY}
     api_base: "https://chat-ai.academiccloud.de/v1"
-  - model: openai/qwen3-235b-a22b
+  - provider: openai
+    model: qwen3-235b-a22b
     api_key: ${CHATAI_API_KEY}
     api_base: "https://chat-ai.academiccloud.de/v1"
-  - model: openai/qwen3-30b-a3b-instruct-2507
+  - provider: openai
+    model: qwen3-30b-a3b-instruct-2507
     api_key: ${CHATAI_API_KEY}
     api_base: "https://chat-ai.academiccloud.de/v1"
-  - model: openai/qwen3-30b-a3b-thinking-2507
+  - provider: openai
+    model: qwen3-30b-a3b-thinking-2507
     api_key: ${CHATAI_API_KEY}
     api_base: "https://chat-ai.academiccloud.de/v1"
-  - model: openai/qwen3-32b
+  - provider: openai
+    model: qwen3-32b
     api_key: ${CHATAI_API_KEY}
     api_base: "https://chat-ai.academiccloud.de/v1"
-  - model: openai/qwen3-coder-30b-a3b-instruct
+  - provider: openai
+    model: qwen3-coder-30b-a3b-instruct
     api_key: ${CHATAI_API_KEY}
     api_base: "https://chat-ai.academiccloud.de/v1"
-  - model: openai/qwen3-omni-30b-a3b-instruct
+  - provider: openai
+    model: qwen3-omni-30b-a3b-instruct
     api_key: ${CHATAI_API_KEY}
     api_base: "https://chat-ai.academiccloud.de/v1"
-  - model: openai/qwen3-vl-30b-a3b-instruct
-    api_key: ${CHATAI_API_KEY}
-    api_base: "https://chat-ai.academiccloud.de/v1"
-  - model: openai/teuken-7b-instruct-research
-    api_key: ${CHATAI_API_KEY}
-    api_base: "https://chat-ai.academiccloud.de/v1"
-  - model: openai/e5-mistral-7b-instruct
-    api_key: ${CHATAI_API_KEY}
-    api_base: "https://chat-ai.academiccloud.de/v1"
-  - model: openai/multilingual-e5-large-instruct
-    api_key: ${CHATAI_API_KEY}
-    api_base: "https://chat-ai.academiccloud.de/v1"
-  - model: openai/qwen3-embedding-4b
+  - provider: openai
+    model: qwen3-vl-30b-a3b-instruct
     api_key: ${CHATAI_API_KEY}
     api_base: "https://chat-ai.academiccloud.de/v1"
