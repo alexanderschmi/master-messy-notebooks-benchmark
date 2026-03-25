@@ -9,11 +9,11 @@ import itertools
 from pathlib import Path
 from tqdm import tqdm
 
-from src import dspy_config
-from src.notebook_parser import load_notebooks
-from src.llm_runner import get_model_response
-from src.openhands_runner import get_openhands_response
-from src.scoring_pipeline import score_pipeline
+from src.core import dspy_config
+from src.core.notebook_parser import load_notebooks
+from src.runners.llm_runner import get_model_response
+from src.runners.openhands_runner import get_openhands_response
+from src.scoring.pipeline import score_pipeline
 
 logger = logging.getLogger(__name__)
 
