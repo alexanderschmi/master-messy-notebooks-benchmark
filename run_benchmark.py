@@ -14,16 +14,9 @@ from src.core.notebook_parser import load_notebooks
 from src.runners.llm_runner import get_model_response
 from src.runners.openhands_runner import get_openhands_response
 from src.scoring.pipeline import score_pipeline
+from src.core.logger import setup_logger, worker_init
 
 logger = logging.getLogger(__name__)
-
-def worker_init(q):
-    """Initialize logging in worker processes."""
-    qh = logging.handlers.QueueHandler(q)
-    root_logger = logging.getLogger()
-    root_logger.setLevel(logging.INFO)
-    root_logger.handlers.clear()
-    root_logger.addHandler(qh)
 
 def proxy(params, notebook, temperature, use_cot, complexity, save_history, output_dir, run_id):
     provider = params.get("provider", "openai")
@@ -34,6 +27,7 @@ def proxy(params, notebook, temperature, use_cot, complexity, save_history, outp
     base_path = Path(output_dir) / f"{nb_id}/{runner}/{model_name}_complexity_{complexity}_run_{run_id}"
     if base_path.exists():
         logger.info(f"Skipping already generated: {base_path}")
+        return
     
     try:
         if runner == "agentic":
@@ -153,20 +147,7 @@ if __name__ == "__main__":
     )
     args = parser.parse_args()
 
-    file_handler = logging.FileHandler("benchmark.log")
-    stream_handler = logging.StreamHandler()
-    formatter = logging.Formatter("%(asctime)s [%(levelname)s] %(message)s")
-    file_handler.setFormatter(formatter)
-    stream_handler.setFormatter(formatter)
-
-    logging.basicConfig(
-        level=logging.INFO,
-        handlers=[file_handler, stream_handler]
-    )
-
-    m = multiprocessing.Manager()
-    log_queue = m.Queue()
-    queue_listener = logging.handlers.QueueListener(log_queue, file_handler, stream_handler)
+    log_queue, queue_listener = setup_logger(log_file="benchmark.log", use_multiprocessing=True)
     queue_listener.start()
 
     BASE_DIR = Path(__file__).resolve().parent

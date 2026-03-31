@@ -209,15 +209,7 @@ def score_pipeline(output_dir, data_dir, target_nb=None, target_model=None, targ
 
 if __name__ == "__main__":
     # Test script standalone
-    file_handler = logging.FileHandler("scoring.log")
-    stream_handler = logging.StreamHandler()
-    formatter = logging.Formatter("%(asctime)s [%(levelname)s] %(message)s")
-    file_handler.setFormatter(formatter)
-    stream_handler.setFormatter(formatter)
-
-    logging.basicConfig(
-        level=logging.INFO,
-        handlers=[file_handler, stream_handler]
-    )
+    from src.core.logger import setup_logger
+    setup_logger(log_file="scoring.log")
     base_dir = Path(__file__).resolve().parent.parent
     score_pipeline(base_dir / "output", base_dir / "data")

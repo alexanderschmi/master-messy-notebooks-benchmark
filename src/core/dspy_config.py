@@ -22,12 +22,13 @@ class OutputSchema(BaseModel):
 
 class CodeGenSignature(dspy.Signature):
     """
-    You are a software developer that works in ai research on NLP tasks. Create the following 3 connected files
+    You are a software developer that works in ai research on NLP tasks. Create the code of the following 3 connected files
     based on a jupyter notebook provided later.
-    1. A python file named train.py that includes the script needed to train the same model depicted in the notebook.
-    2. A python file named inference.py that includes the script needed to run inference on the same model as either
-    batch jobs or online given the specific task inside the notebook.
-    3. A text file named requirements.txt that includes all libraries need to run both python files mentioned before.
+    1. A python file named train that includes the code (classes and functions) of the notebook, needed to train the same model depicted in the notebook and saves the same model artifacts.
+    2. A python file named inference that includes the code (classes and functions), needed to run inference on the same model as either
+    batch jobs or online given the specific task inside the notebook. It should have a function inference.inference(feature) -> int
+    that takes one feature of the data set as input and returns the model output.
+    3. A text file named requirements that includes all libraries need to run both python files mentioned before.
     A good output should be well documented, easily understandable and should fix all errors present inside the
     notebook if there are any.
     """

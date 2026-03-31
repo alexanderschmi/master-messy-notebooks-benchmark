@@ -1,7 +1,7 @@
 import logging
 from pathlib import Path
 
-from src.inference.strategies import InferenceStrategy
+from src.inference.strategies import InferenceStrategy, LSTMClassifier, Model
 import src.inference.notebooks as notebooks
 
 logger = logging.getLogger(__name__)
@@ -20,9 +20,10 @@ def test_artifact(script_instance: InferenceStrategy, path: str | Path = None):
 
 # Execution
 if __name__ == "__main__":
-    logging.basicConfig(level=logging.INFO)
+    from src.core.logger import setup_logger
+    setup_logger()
 
-    project_root = Path(__file__).resolve().parent.parent
+    project_root = Path(__file__).resolve().parent.parent.parent
     data_dir = project_root / "data"
 
     for i in range(1, 11):

@@ -15,6 +15,8 @@ def sanitize_json_output(output_str):
     cleaned = re.sub(r"^```json", "", output_str.strip(), flags=re.MULTILINE)
     cleaned = re.sub(r"^```python", "", cleaned, flags=re.MULTILINE)
     cleaned = re.sub(r"^```", "", cleaned, flags=re.MULTILINE)
+    cleaned = re.sub(r"[\x08\x0b\x0c]", "", cleaned)
+    cleaned = cleaned.replace('\r\n', '\n').replace('\r', '\n')
     return cleaned.strip()
 
 def extract_file_content(field_content, filename, history_dict=None):

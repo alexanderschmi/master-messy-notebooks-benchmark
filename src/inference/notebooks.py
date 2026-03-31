@@ -23,6 +23,7 @@ class InferenceNb1(InferenceTransformers):
     def testInference(self, path: str | Path, prompt):
         import torch
         from pathlib import Path
+        from transformers import AutoTokenizer, AutoModelForSequenceClassification, AutoModel
 
         prompt.Misconception = prompt.Misconception.fillna('NA')
         idx = prompt.apply(lambda row: row.Category.split('_')[0],axis=1)=='True'
@@ -51,8 +52,6 @@ class InferenceNb1(InferenceTransformers):
 
         tokenizer = AutoTokenizer.from_pretrained(tokenizer_path)
         # Try finding a pt model or safe tensors
-        from transformers import AutoModelForSequenceClassification, AutoModel
-
         try:
             model = AutoModelForSequenceClassification.from_pretrained(model_path)
         except Exception:
