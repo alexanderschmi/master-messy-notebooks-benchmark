@@ -2,16 +2,38 @@ import logging
 import logging.handlers
 import multiprocessing
 
-_FORMATTER = logging.Formatter("%(asctime)s [%(levelname)s] %(name)s - %(message)s")
+_LEVEL_COLORS = {
+    logging.DEBUG:    "\033[36m",   # cyan
+    logging.INFO:     "\033[32m",   # green
+    logging.WARNING:  "\033[33m",   # yellow
+    logging.ERROR:    "\033[31m",   # red
+    logging.CRITICAL: "\033[35m",   # magenta
+}
+_RESET = "\033[0m"
+
+_FILE_FORMATTER = logging.Formatter("%(asctime)s [%(levelname)s] %(name)s - %(message)s")
+
+
+class _ColorFormatter(logging.Formatter):
+    def format(self, record):
+        color = _LEVEL_COLORS.get(record.levelno, "")
+        record = logging.makeLogRecord(record.__dict__)
+        record.levelname = f"{color}{record.levelname}{_RESET}"
+        record.msg = f"{color}{record.msg}{_RESET}"
+        return super().format(record)
+
+
+_COLOR_FORMATTER = _ColorFormatter("%(asctime)s [%(levelname)s] %(name)s - %(message)s")
+
 
 def get_console_handler():
     stream_handler = logging.StreamHandler()
-    stream_handler.setFormatter(_FORMATTER)
+    stream_handler.setFormatter(_COLOR_FORMATTER)
     return stream_handler
 
 def get_file_handler(log_file):
     file_handler = logging.FileHandler(log_file)
-    file_handler.setFormatter(_FORMATTER)
+    file_handler.setFormatter(_FILE_FORMATTER)
     return file_handler
 
 def setup_logger(log_file=None, use_multiprocessing=False):

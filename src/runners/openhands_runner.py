@@ -4,8 +4,9 @@ import os
 import re
 import tempfile
 from pathlib import Path
-from typing import List, Optional
+from typing import Optional
 from src.core.file_io import generate_files_from_answer
+from src.runners.base import BaseRunner
 
 from openhands.sdk import Agent, Conversation, LLM, Tool
 from openhands.sdk.workspace import LocalWorkspace
@@ -147,33 +148,39 @@ def run_openhands_sync(
         return MockAnswer(MockOutput(requirements=reqs, train=train, inference=inference))
 
 
-def get_openhands_response(
-    model: str,
-    api_key: str,
-    notebook: tuple[str, str],
-    prompt: str,
-    api_base: Optional[str] = None,
-    output_dir: str = "/output",
-    complexity: int = 4,
-    run: int = 1,
-) -> dict:
-    """Query OpenHands for a single notebook and return the mocked predictions."""
-    nb_id, nb_content = notebook
-    logger.info(f"[OpenHands - {model}] Processing notebook {nb_id}")
-    
-    try:
-        answer = run_openhands_sync(
-            model=model,
-            api_key=api_key,
-            notebook_content=nb_content,
-            prompt=prompt,
-            api_base=api_base
-        )
-        logger.info(f"[OpenHands - {model}] Successfully processed notebook {nb_id}")
-    except Exception as e:
-        logger.error(f"[OpenHands - {model}] Failed processing notebook {nb_id}: {e}")
-        # The downstream system handles string exceptions natively
-        return
+class OpenHandsRunner(BaseRunner):
+    RUNNER_NAME = "agentic"
 
-    logger.info(f"[OpenHands - {model}] Finished processing notebook {nb_id}")
-    generate_files_from_answer((nb_id, answer, None), output_dir, model, complexity, runner="agentic", run=run)
+    def run(
+        self,
+        params: dict,
+        notebook: tuple[str, str],
+        temperature: float,
+        save_history: bool,
+        output_dir: str,
+        complexity: int,
+        run: int,
+    ) -> None:
+        model = params.get("model", params.get("name", "unknown_model"))
+        api_key = params.get("api_key", "")
+        api_base = params.get("api_base")
+        prompt = params.get("prompt", "")
+
+        nb_id, nb_content = notebook
+        logger.info(f"[OpenHands - {model}] Processing notebook {nb_id}")
+
+        try:
+            answer = run_openhands_sync(
+                model=model,
+                api_key=api_key,
+                notebook_content=nb_content,
+                prompt=prompt,
+                api_base=api_base,
+            )
+            logger.info(f"[OpenHands - {model}] Successfully processed notebook {nb_id}")
+        except Exception as e:
+            logger.error(f"[OpenHands - {model}] Failed processing notebook {nb_id}: {e}")
+            return
+
+        logger.info(f"[OpenHands - {model}] Finished processing notebook {nb_id}")
+        generate_files_from_answer((nb_id, answer, None), output_dir, model, complexity, runner=self.RUNNER_NAME, run=run)

@@ -1,25 +1,20 @@
 import argparse
 from envyaml import EnvYAML
 import logging
-import logging.handlers
-import multiprocessing
 import sys
 import concurrent.futures
 import itertools
 from pathlib import Path
-from tqdm import tqdm
 
 from src.core import dspy_config
 from src.core.notebook_parser import load_notebooks
-from src.runners.llm_runner import get_model_response
-from src.runners.openhands_runner import get_openhands_response
+from src.runners import get_runner, validate_runner
 from src.scoring.pipeline import score_pipeline
 from src.core.logger import setup_logger, worker_init
 
 logger = logging.getLogger(__name__)
 
-def proxy(params, notebook, temperature, use_cot, complexity, save_history, output_dir, run_id):
-    provider = params.get("provider", "openai")
+def proxy(params, notebook, temperature, complexity, save_history, output_dir, run_id):
     model_name = params.get("model", params.get("name", "unknown_model"))
     runner = params.get("runner", "simple")
     nb_id, _ = notebook
@@ -30,39 +25,22 @@ def proxy(params, notebook, temperature, use_cot, complexity, save_history, outp
         return
     
     try:
-        if runner == "agentic":
-            get_openhands_response(
-                model=model_name,
-                provider=provider,
-                api_key=params.get("api_key", ""),
-                notebook=notebook,
-                prompt=params.get("prompt"),
-                api_base=params.get("api_base"),
-                output_dir=output_dir,
-                complexity=complexity,
-                run=run_id,
-            )
-        else:
-            get_model_response(
-                notebook=notebook,
-                temperature=temperature,
-                api_base=params.get("api_base"),
-                use_cot=use_cot,
-                model=model_name,
-                provider=provider,
-                api_key=params.get("api_key", ""),
-                save_history=save_history,
-                output_dir=output_dir,
-                complexity=complexity,
-                run=run_id,
-            )
+        get_runner(runner).run(
+            params=params,
+            notebook=notebook,
+            temperature=temperature,
+            save_history=save_history,
+            output_dir=output_dir,
+            complexity=complexity,
+            run=run_id,
+        )
 
     except Exception as e:
         error_msg = f"Failed on {model_name}: {type(e).__name__} - {str(e)}"
         logger.warning(error_msg)
 
 
-def run_benchmark(notebooks, models_to_test, temperature, output_dir, use_cot, complexity, save_history, runs, log_queue=None):
+def run_benchmark(notebooks, models_to_test, temperature, output_dir, complexity, save_history, runs, log_queue=None):
     logger.info(f"Starting Benchmark on {len(models_to_test)} models, {len(notebooks)} notebooks for {runs} runs ...\n")
 
     with concurrent.futures.ProcessPoolExecutor(
@@ -77,7 +55,6 @@ def run_benchmark(notebooks, models_to_test, temperature, output_dir, use_cot, c
                              models_to_test, 
                              itertools.repeat(notebook), 
                              itertools.repeat(temperature), 
-                             itertools.repeat(use_cot), 
                              itertools.repeat(complexity), 
                              itertools.repeat(save_history), 
                              itertools.repeat(output_dir),
@@ -119,11 +96,6 @@ if __name__ == "__main__":
         help="Specific notebook ID to run (e.g. nb1). If not set, runs all from data."
     )
     parser.add_argument(
-        "--cot",
-        action="store_true",
-        help="Use Chain of Thought (dspy.ChainOfThought) instead of standard Predict."
-    )
-    parser.add_argument(
         "--score",
         action="store_true",
         help="Run the scoring pipeline after generating the model outputs."
@@ -136,7 +108,6 @@ if __name__ == "__main__":
     parser.add_argument(
         "--runner",
         type=str,
-        choices=["simple", "agentic"],
         default="simple",
         help="The runner engine to use."
     )
@@ -170,6 +141,12 @@ if __name__ == "__main__":
     for m in models_to_test:
         m["runner"] = args.runner
 
+    try:
+        validate_runner(args.runner)
+    except ValueError as e:
+        logger.error(str(e))
+        sys.exit(1)
+
     temperature = config.get("settings", {}).get("temperature", 0.1)
     complexity = args.complexity
 
@@ -199,7 +176,7 @@ if __name__ == "__main__":
 
     if not args.score_only:
         logger.info(f"Running models: {[m.get('model', m.get('name')) for m in models_to_test]} against {[nb[0] for nb in notebooks]}")
-        run_benchmark(notebooks=notebooks, models_to_test=models_to_test, temperature=temperature, output_dir=output_dir, use_cot=args.cot, complexity=complexity, save_history=save_history, runs=args.runs, log_queue=log_queue)
+        run_benchmark(notebooks=notebooks, models_to_test=models_to_test, temperature=temperature, output_dir=output_dir, complexity=complexity, save_history=save_history, runs=args.runs, log_queue=log_queue)
     else:
         logger.info("Score-only mode enabled. Skipping model execution.")
 
