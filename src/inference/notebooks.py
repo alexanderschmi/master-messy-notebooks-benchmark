@@ -136,12 +136,12 @@ class InferenceNb5(InferenceTransformers):
         from pathlib import Path
         import json
 
-        with open(Path(path) / "vocab.json", "r") as f:
+        with open(list(Path(path).rglob("*.json"))[0], "r") as f:
             vocab = json.load(f)
 
         prompt = self.encode(prompt, vocab)
 
-        model_path = list(Path(path).glob("*.pt"))[0]
+        model_path = list(Path(path).rglob("*.pt"))[0]
         try:
             import warnings
 

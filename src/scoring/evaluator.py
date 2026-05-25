@@ -3,9 +3,23 @@ import radon.metrics as mi
 import radon.raw as raw
 
 
-def analyze_script_complexity(file_path):
+# Maps the 1-5 integer score produced by analyze_script_complexity to a
+# human-readable description used in report details.
+_RATING_DESCRIPTIONS = {
+    5: "Excellent — clean, simple, and highly maintainable.",
+    4: "Good — well structured; minor improvements possible.",
+    3: "Fair — functional but complex; consider refactoring.",
+    2: "Poor — hard to read/maintain; significant refactoring needed.",
+    1: "Critical — high risk of bugs; immediate refactoring required.",
+}
+
+
+def analyze_script_complexity(file_path) -> dict:
     """
-    Analyzes a Python script using radon metrics and returns a complexity score (1-5).
+    Analyze a Python script with radon and return a complexity score (1–5).
+
+    Returns a dict with ``final_score`` and ``details`` on success,
+    or ``{"error": "..."}`` on failure.
     """
     try:
         with open(file_path, "r", encoding="utf-8") as f:
@@ -16,19 +30,14 @@ def analyze_script_complexity(file_path):
     try:
         mi_score = mi.mi_visit(code, multi=True)
         cc_blocks = cc.cc_visit(code)
-
-        if cc_blocks:
-            avg_cc = sum(block.complexity for block in cc_blocks) / len(cc_blocks)
-            max_cc = max(block.complexity for block in cc_blocks)
-        else:
-            avg_cc = 0
-            max_cc = 0
-
         raw_metrics = raw.analyze(code)
-        loc = raw_metrics.loc
-    except Exception as e:
-        return {"error": f"Error during radon analysis: {e}"}
+    except Exception as exc:
+        return {"error": f"Error during radon analysis: {exc}"}
 
+    avg_cc = (sum(b.complexity for b in cc_blocks) / len(cc_blocks)) if cc_blocks else 0
+    max_cc = max((b.complexity for b in cc_blocks), default=0)
+
+    # Derive score from Maintainability Index …
     if mi_score >= 80:
         score = 5
     elif mi_score >= 60:
@@ -40,6 +49,7 @@ def analyze_script_complexity(file_path):
     else:
         score = 1
 
+    # … then penalise for high cyclomatic complexity.
     if max_cc > 40:
         score = 1
     elif max_cc > 30:
@@ -57,18 +67,7 @@ def analyze_script_complexity(file_path):
             "maintainability_index": round(mi_score, 2),
             "average_complexity": round(avg_cc, 2),
             "max_complexity": max_cc,
-            "loc": loc,
-            "rating_description": _get_rating_desc(final_score),
+            "loc": raw_metrics.loc,
+            "rating_description": _RATING_DESCRIPTIONS.get(final_score, "Unknown"),
         },
     }
-
-
-def _get_rating_desc(score):
-    descriptions = {
-        5: "Excellent - Clean, simple, and highly maintainable.",
-        4: "Good - Well structured, minor improvements possible.",
-        3: "Fair - Functional but complex; consider refactoring.",
-        2: "Poor - Hard to read/maintain; significant refactoring needed.",
-        1: "Critical - High risk of bugs; immediate refactoring required.",
-    }
-    return descriptions.get(score, "Unknown")

@@ -6,6 +6,8 @@ from pathlib import Path
 import logging
 import torch.nn as nn
 import pandas as pd
+import numpy as np
+import re
 
 logger = logging.getLogger(__name__)
 
@@ -56,6 +58,18 @@ def format_input(row):
         f"{x}\n"
         f"Student Explanation: {row['StudentExplanation']}"
     )
+
+def clean_text(text):
+    """
+    Clean the input text by removing HTML tags, special characters, and normalizing whitespace.
+    """
+    text = str(text)
+    text = re.sub(r'<[^>]+>', '', text)
+    text = re.sub(r'[^\w\s&\'%-]', '', text)
+    text = re.sub(r'([!?.])\1+', r'\1', text)
+    text = re.sub(r'\s+', ' ', text).strip()
+    text = text.lower()
+    return text
 
 
 class Model(nn.Module):
@@ -141,10 +155,12 @@ class InferenceSentenceTransformer(InferenceStrategy):
     def testInference(self, path: str | Path, prompt):
         import pickle
 
-        model_path = list(Path(path).glob("*.pkl"))[0]
+        model_path = list(Path(path).rglob("*.pkl"))[0]
         with open(model_path, "rb") as f:
             model = pickle.load(f)
         try:
-            return float(model.encode([prompt]).sum())
+            result = model.encode([clean_text(prompt)], convert_to_tensor=True)[0]
+            result = result.cpu().numpy()
+            return float(result.sum())
         except Exception:
             return None

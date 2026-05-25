@@ -3,6 +3,7 @@ import logging
 import os
 import re
 import tempfile
+import time
 from pathlib import Path
 from typing import Optional
 from src.core.file_io import generate_files_from_answer
@@ -17,15 +18,11 @@ from openhands.tools.terminal import TerminalTool
 
 logger = logging.getLogger(__name__)
 
-class MockOutput:
+class MockAnswer:
     def __init__(self, requirements: str, train: str, inference: str):
         self.requirements = requirements
         self.train = train
         self.inference = inference
-
-class MockAnswer:
-    def __init__(self, output: MockOutput):
-        self.output = output
 
 
 def extract_code_from_text(content: str, filename: str) -> Optional[str]:
@@ -52,11 +49,13 @@ def extract_code_from_text(content: str, filename: str) -> Optional[str]:
 
 def run_openhands_sync(
     model: str,
+    provider: str,
     api_key: str,
+    temperature: float,
     notebook_content: str,
     prompt: str,
     api_base: Optional[str] = None
-) -> MockAnswer:
+) -> tuple[MockAnswer, dict, float]:
     """Run OpenHands programmatically for a single notebook in a temporary workspace."""
     
     # We create a temporary directory for the workspace
@@ -66,17 +65,19 @@ def run_openhands_sync(
         # Write the notebook content to a file inside the workspace
         nb_path = temp_path / "notebook.ipynb"
         nb_path.write_text(notebook_content, encoding="utf-8")
+
+        (temp_path / "notebook.md").write_text(notebook_content, encoding="utf-8")
         
         # Configure the LLM
         if api_base:
             llm = LLM(
-                model=model, 
+                model=provider + "/" + model, 
                 api_key=api_key,
                 base_url=api_base,
-                native_tool_calling=False
+                temperature=temperature,
             )
         else:
-            llm = LLM(model=model, api_key=api_key, native_tool_calling=False)
+            llm = LLM(model=provider + "/" + model, api_key=api_key, temperature=temperature, native_tool_calling=False)
 
         # Initialize the OpenHands agent
         agent = Agent(llm=llm, tools=[Tool(name=TerminalTool.name),Tool(name=FileEditorTool.name),Tool(name=TaskTrackerTool.name)])
@@ -85,7 +86,7 @@ def run_openhands_sync(
         workspace = LocalWorkspace(working_dir=temp_dir)
         conversation = Conversation(
             agent=agent,
-            max_iteration_per_run=50,
+            max_iteration_per_run=30,
             workspace=workspace
         )
         
@@ -94,7 +95,7 @@ def run_openhands_sync(
         # Formulate the message to start the task
         task_msg = (
             f"{prompt}\n\n"
-            f"The notebook has been saved in this workspace as 'notebook.ipynb'.\n"
+            f"The notebook content has been saved in this workspace as '{temp_dir}/notebook.md'.\n"
             f"Please create the files train.py, inference.py, and requirements.txt "
             f"in this SAME directory based on the instructions. Do not ask for user confirmation. Just write the files!"
         )
@@ -103,9 +104,14 @@ def run_openhands_sync(
         
         logger.info("Running OpenHands agent...")
         try:
+            start_time = time.time()
             conversation.run()
+            end_time = time.time()
+            total_time = end_time - start_time
         except Exception as e:
             logger.warning(f"Error during conversation.run(): {e}")
+
+        total_dict = conversation.conversation_stats.get_combined_metrics().model_dump()
         
         logger.info("OpenHands completed. Gathering output files from workspace...")
         
@@ -144,8 +150,10 @@ def run_openhands_sync(
                     train = extract_code_from_text(combined_history, "train.py") or ""
                 if not inference:
                     inference = extract_code_from_text(combined_history, "inference.py") or ""
+            if not reqs or not train or not inference:
+                raise ValueError("Failed to extract code from conversation history")
 
-        return MockAnswer(MockOutput(requirements=reqs, train=train, inference=inference))
+        return MockAnswer(requirements=reqs, train=train, inference=inference), total_dict, total_time
 
 
 class OpenHandsRunner(BaseRunner):
@@ -165,14 +173,17 @@ class OpenHandsRunner(BaseRunner):
         api_key = params.get("api_key", "")
         api_base = params.get("api_base")
         prompt = params.get("prompt", "")
+        provider = params.get("provider", "openai")
 
         nb_id, nb_content = notebook
         logger.info(f"[OpenHands - {model}] Processing notebook {nb_id}")
 
         try:
-            answer = run_openhands_sync(
+            answer, metrics, total_time = run_openhands_sync(
                 model=model,
+                provider=provider,
                 api_key=api_key,
+                temperature=temperature,
                 notebook_content=nb_content,
                 prompt=prompt,
                 api_base=api_base,
@@ -183,4 +194,4 @@ class OpenHandsRunner(BaseRunner):
             return
 
         logger.info(f"[OpenHands - {model}] Finished processing notebook {nb_id}")
-        generate_files_from_answer((nb_id, answer, None), output_dir, model, complexity, runner=self.RUNNER_NAME, run=run)
+        generate_files_from_answer((nb_id, answer, None), output_dir, model, complexity, runner=self.RUNNER_NAME, run=run, usage=metrics, time_taken=total_time)

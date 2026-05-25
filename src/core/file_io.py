@@ -8,12 +8,44 @@ from pathlib import Path
 logger = logging.getLogger(__name__)
 
 
+def _to_jsonable(value):
+    """Recursively convert common SDK objects into JSON-serializable data."""
+    if value is None or isinstance(value, (str, int, float, bool)):
+        return value
+    if isinstance(value, dict):
+        return {str(k): _to_jsonable(v) for k, v in value.items()}
+    if isinstance(value, (list, tuple, set)):
+        return [_to_jsonable(v) for v in value]
+
+    # pydantic v2 models and several SDK response types
+    if hasattr(value, "model_dump"):
+        try:
+            return _to_jsonable(value.model_dump())
+        except Exception:
+            pass
+
+    if hasattr(value, "dict"):
+        try:
+            return _to_jsonable(value.dict())
+        except Exception:
+            pass
+
+    if hasattr(value, "__dict__"):
+        try:
+            return _to_jsonable(vars(value))
+        except Exception:
+            pass
+
+    return str(value)
+
+
 def sanitize_json_output(output_str):
     """Cleans up LLM output to ensure valid JSON parsing."""
     if not output_str:
         return ""
     cleaned = re.sub(r"^```json", "", output_str.strip(), flags=re.MULTILINE)
     cleaned = re.sub(r"^```python", "", cleaned, flags=re.MULTILINE)
+    cleaned = re.sub(r"^```text", "", cleaned, flags=re.MULTILINE)
     cleaned = re.sub(r"^```", "", cleaned, flags=re.MULTILINE)
     cleaned = re.sub(r"[\x08\x0b\x0c]", "", cleaned)
     cleaned = cleaned.replace('\r\n', '\n').replace('\r', '\n')
@@ -47,7 +79,7 @@ def extract_file_content(field_content, filename, history_dict=None):
     return sanitize_json_output(field_content)
 
 
-def generate_files_from_answer(answer, output_dir: str, model: str, complexity: int, runner: str = "simple", run: int = 1):
+def generate_files_from_answer(answer, output_dir: str, model: str, complexity: int, time_taken: float = 0.0, usage=None, runner: str = "simple", run: int = 1):
     """Generates files from answers."""
     os.makedirs(output_dir, exist_ok=True)
     nb_id, answer, history_tuple = answer
@@ -79,6 +111,15 @@ def generate_files_from_answer(answer, output_dir: str, model: str, complexity: 
         base_path / "inference.py", "w", encoding="utf-8", errors="replace"
     ) as f:
         f.write(extract_file_content(answer.inference, "inference.py", history_tuple))
+
+    if time_taken is not None and usage is not None:
+        with open(
+            base_path / "metrics.json", "w", encoding="utf-8"
+        ) as f:
+            json.dump({
+                "time_taken": time_taken,
+                "usage": _to_jsonable(usage)
+            }, f, indent=2)
 
     # Rely on anchoring the input path mapping from data root to model path
     src_input = Path(output_dir).parent / "data" / nb_id / "input"
