@@ -165,34 +165,6 @@ def _score_requirements(data_path: Path, nb_id: str, model_dir: Path) -> dict:
 
 
 # ---------------------------------------------------------------------------
-# Score calculation
-# ---------------------------------------------------------------------------
-
-def _calculate_scores(row: dict) -> dict:
-    """
-    Compute final 0-100 train and inference scores from the raw metric flags.
-
-    Train  (100 pts): syntax 20 | execution 60 | artifact match 20
-    Infer  (100 pts): syntax 20 | own inference 40 | llm inference 30 | match 10
-    """
-    train_score = 0.0
-    if row.get("train_syntax_valid"):     train_score += 20.0
-    if row.get("train_execution_success"): train_score += 60.0
-    train_score += 20.0 * row.get("artifact_match_score", 0.0)
-
-    inference_score = 0.0
-    if row.get("inference_syntax_valid"):  inference_score += 20.0
-    if row.get("own_inference_success"):   inference_score += 40.0
-    if row.get("llm_inference_success"):   inference_score += 30.0
-    if row.get("outputs_match"):           inference_score += 10.0
-
-    return {
-        "train_score": round(train_score, 2),
-        "inference_score": round(inference_score, 2),
-    }
-
-
-# ---------------------------------------------------------------------------
 # Report helpers
 # ---------------------------------------------------------------------------
 
@@ -215,13 +187,46 @@ def _save_reports(df: pd.DataFrame, output_path: Path) -> None:
     df.to_csv(report_path, index=False)
     logger.info(f"Detailed report saved to {report_path}")
 
-    score_cols = ["train_score", "inference_score", "requirements_score"]
-    if all(c in df.columns for c in score_cols):
+    individual_cols = ["train_execution_success", "own_inference_success", "llm_inference_success"]
+    required_cols = individual_cols + ["train_syntax_valid", "inference_syntax_valid", "artifact_match_score", "requirements_match_score"]
+    if all(c in df.columns for c in required_cols):
+        work = df.copy()
+
+        # Strict AND success flags (0/1) matching visualize.py logic
+        work["train_success"] = (
+            work["train_syntax_valid"].fillna(False)
+            & work["train_execution_success"].fillna(False)
+            & work["artifact_match_score"].fillna(0).ge(1.0)
+        ).astype(float)
+
+        work["inference_success"] = (
+            work["inference_syntax_valid"].fillna(False)
+            & work["own_inference_success"].fillna(False)
+            & work["llm_inference_success"].fillna(False)
+        ).astype(float)
+
+        work["overall_success"] = work["inference_success"] * work["requirements_match_score"].fillna(0)
+
+        agg_cols = individual_cols + ["train_success", "inference_success", "overall_success"]
         agg_df = (
-            df.groupby(["model", "runner", "complexity"], as_index=False)[score_cols]
+            work.groupby(["model", "runner", "complexity"], as_index=False)[agg_cols]
             .mean()
-            .round(2)
-            .sort_values(by=score_cols, ascending=False)
+            .round(4)
+        )
+        # Conditional inference rate: P(inference | train succeeded); 0 when train_success = 0
+        agg_df["inference_success_cond"] = (
+            agg_df["inference_success"] / agg_df["train_success"]
+        ).where(agg_df["train_success"] > 0, other=0.0).round(4)
+
+        # Overall: mean of the three independent success dimensions
+        req = work.groupby(["model", "runner", "complexity"], as_index=False)["requirements_match_score"].mean().round(4)
+        agg_df = agg_df.merge(req, on=["model", "runner", "complexity"], how="left")
+        agg_df["overall_success"] = (
+            (agg_df["train_success"] + agg_df["inference_success_cond"] + agg_df["requirements_match_score"]) / 3
+        ).round(4)
+        agg_df = (
+            agg_df
+            .sort_values(by=["overall_success", "train_success", "inference_success_cond"], ascending=False)
             .reset_index(drop=True)
         )
         agg_path = output_path / "scoring_report_aggregated.csv"
@@ -305,7 +310,6 @@ def score_pipeline(
                 "outputs_match": False,
             })
 
-        row.update(_calculate_scores(row))
         new_rows.append(row)
 
     if not new_rows:

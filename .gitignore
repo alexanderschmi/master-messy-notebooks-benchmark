@@ -209,3 +209,4 @@ __marimo__/
 output/
 test.ipynb
 .idea
+.DS_Store

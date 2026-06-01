@@ -1,6 +1,6 @@
 # Master Messy Notebooks Benchmark
 
-A benchmark that evaluates LLMs on their ability to convert messy Jupyter notebooks into clean, production-ready Python code. Given a notebook, models must generate a `train.py`, `inference.py`, and `requirements.txt`. The generated code is then scored on syntax validity, execution success, code complexity, and inference correctness.
+A benchmark that evaluates LLMs on their ability to convert messy Jupyter notebooks into clean, production-ready Python code. Given a notebook, models must generate a `train.py`, `inference.py`, and `requirements.txt`. The generated code is then scored on whether training executes successfully and whether inference runs without error.
 
 ---
 
@@ -155,19 +155,8 @@ Scoring is run with `--score` or `--score-only` and produces two CSV files in `o
 | `llm_inference_success` | Whether the LLM-generated inference function executes |
 | `outputs_match` | Whether inference outputs match expected results |
 | `requirements_match_score` | Overlap between generated and original requirements |
-| `train_score` | Composite train score (0–100) |
-| `inference_score` | Composite inference score (0–100) |
-| `requirements_score` | Requirements accuracy score (0–100) |
 
-**`scoring_report_aggregated.csv`** — averages per model across all notebooks / runs.
-
-### Score Composition
-
-```
-train_score       = 20 (syntax) + 60 (execution) + 20 (artifact match)
-inference_score   = 20 (syntax) + 40 (own inference) + 30 (LLM inference) + 10 (outputs match)
-requirements_score = requirements_match_score × 100
-```
+**`scoring_report_aggregated.csv`** — mean `train_execution_success` and `own_inference_success` per model / runner / complexity, sorted by those two columns.
 
 ---
 
