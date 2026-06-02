@@ -8,6 +8,7 @@ from pathlib import Path
 
 from src.core import dspy_config
 from src.core.notebook_parser import load_notebooks
+from src.core.output_layout import build_run_dir
 from src.runners import get_runner, validate_runner
 from src.scoring.pipeline import score_pipeline
 from src.core.logger import setup_logger, worker_init
@@ -19,7 +20,7 @@ def proxy(params, notebook, temperature, complexity, save_history, output_dir, r
     runner = params.get("runner", "simple")
     nb_id, _ = notebook
 
-    base_path = Path(output_dir) / f"{nb_id}/{runner}/{model_name}_complexity_{complexity}_run_{run_id}"
+    base_path = build_run_dir(output_dir, nb_id, runner, complexity, run_id, model_name)
     if base_path.exists():
         logger.info(f"Skipping already generated: {base_path}")
         return

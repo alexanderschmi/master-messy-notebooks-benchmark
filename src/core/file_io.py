@@ -5,6 +5,8 @@ import shutil
 import logging
 from pathlib import Path
 
+from src.core.output_layout import build_run_dir
+
 logger = logging.getLogger(__name__)
 
 
@@ -87,7 +89,7 @@ def generate_files_from_answer(answer, output_dir: str, model: str, complexity: 
     if type(answer) is str:
         logger.error(f"Error: {answer}")
         return
-    base_path = Path(output_dir) / f"{nb_id}/{runner}/{model}_complexity_{complexity}_run_{run}"
+    base_path = build_run_dir(output_dir, nb_id, runner, complexity, run, model)
     base_path.mkdir(parents=True, exist_ok=True)
         
     if history_tuple is not None:

@@ -2,6 +2,7 @@ import logging
 import pandas as pd
 from pathlib import Path
 
+from src.core.output_layout import iter_run_dirs
 from src.scoring.evaluator import analyze_script_complexity
 from src.scoring.utils import (
     check_syntax,
@@ -17,65 +18,22 @@ logger = logging.getLogger(__name__)
 SCORE_KEY_COLS = ["notebook_id", "runner", "model", "complexity", "run"]
 
 
-# ---------------------------------------------------------------------------
-# Directory helpers
-# ---------------------------------------------------------------------------
-
-def _parse_model_dir(model_dir: Path) -> dict | None:
-    """
-    Parse a model output directory name of the form
-    ``<model>_complexity_<N>`` or ``<model>_complexity_<N>_run_<R>``.
-
-    Returns a dict with keys ``model``, ``complexity``, ``run``,
-    or ``None`` if the name doesn't match the expected pattern.
-    """
-    name = model_dir.name
-    if "_complexity_" not in name:
-        return None
-
-    run_id = 1
-    if "_run_" in name:
-        base, run_str = name.rsplit("_run_", 1)
-        run_id = int(run_str)
-    else:
-        base = name
-
-    model_name, complexity_str = base.split("_complexity_", 1)
-    return {"model": model_name, "complexity": int(complexity_str), "run": run_id}
-
-
 def _iter_model_dirs(output_path: Path, target_nb, target_runner, target_model, target_complexity):
     """
     Walk ``output_path`` and yield ``(nb_id, runner_name, model_dir, meta)``
     for every model directory that passes all target filters.
     """
-    for nb_dir in output_path.iterdir():
-        if not nb_dir.is_dir():
-            continue
-        nb_id = nb_dir.name
+    for nb_id, runner_name, model_dir, meta in iter_run_dirs(output_path):
         if target_nb and nb_id != target_nb:
             continue
+        if target_runner and runner_name != target_runner:
+            continue
+        if target_model and meta["model"] != target_model:
+            continue
+        if target_complexity and meta["complexity"] != int(target_complexity):
+            continue
 
-        for runner_dir in nb_dir.iterdir():
-            if not runner_dir.is_dir():
-                continue
-            runner_name = runner_dir.name
-            if target_runner and runner_name != target_runner:
-                continue
-
-            for model_dir in runner_dir.iterdir():
-                if not model_dir.is_dir():
-                    continue
-
-                meta = _parse_model_dir(model_dir)
-                if meta is None:
-                    continue
-                if target_model and meta["model"] != target_model:
-                    continue
-                if target_complexity and meta["complexity"] != int(target_complexity):
-                    continue
-
-                yield nb_id, runner_name, model_dir, meta
+        yield nb_id, runner_name, model_dir, meta
 
 
 # ---------------------------------------------------------------------------

@@ -65,6 +65,12 @@ python benchmark.py --score-only
 
 # Save LLM prompt/response history to history.json
 python benchmark.py --save-history
+
+# Preview migration from legacy output folders to the new layout
+python migrate_output_layout.py --dry-run
+
+# Apply the migration
+python migrate_output_layout.py
 ```
 
 ### CLI Arguments
@@ -80,6 +86,23 @@ python benchmark.py --save-history
 | `--score` | off | Run scoring pipeline after generation |
 | `--score-only` | off | Skip generation, run scoring only |
 | `--save-history` | off | Save LLM prompt/response history as `history.json` |
+
+### Migrating Existing Outputs
+
+If you already have benchmark runs stored in the legacy layout
+`output/<nb>/<runner>/<model>_complexity_<N>_run_<R>`, migrate them to the
+current layout `output/<nb>/<runner>/<complexity>/<run>/<model>` with:
+
+```bash
+# inspect planned moves
+python migrate_output_layout.py --dry-run
+
+# perform the move
+python migrate_output_layout.py
+```
+
+By default, the migration stops on conflicts. You can also use
+`--on-conflict skip` or `--on-conflict overwrite`.
 
 ---
 
@@ -166,12 +189,14 @@ Scoring is run with `--score` or `--score-only` and produces two CSV files in `o
 output/
 ├── nb1/
 │   ├── simple/
-│   │   └── gemini-2.5-flash_complexity_4_run_1/
-│   │       ├── train.py
-│   │       ├── inference.py
-│   │       ├── requirements.txt
-│   │       ├── history.json          # only with --save-history
-│   │       └── input/                # copy of the notebook's original dataset
+│   │   └── 4/
+│   │       └── 1/
+│   │           └── gemini-2.5-flash/
+│   │               ├── train.py
+│   │               ├── inference.py
+│   │               ├── requirements.txt
+│   │               ├── history.json          # only with --save-history
+│   │               └── input/                # copy of the notebook's original dataset
 │   ├── cot/
 │   └── agentic/
 ├── nb2/ … nb10/

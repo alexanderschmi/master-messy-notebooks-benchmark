@@ -209,6 +209,9 @@ def test_generated_inference(inference_py_path: Path, model_dir: Path, prompt) -
             result = module.inference(prompt)
         finally:
             os.chdir(original_cwd)
+        if result is None:
+            logger.warning(f"Generated inference returned None for {inference_py_path}")
+            return False, None
         return True, result
     except Exception as exc:
         logger.warning(f"Generated inference failed for {inference_py_path}: {exc}")
@@ -225,6 +228,9 @@ def test_own_inference(model_dir: Path, strategy, prompt) -> tuple[bool, object]
     """
     try:
         result = strategy.testInference(model_dir, prompt)
+        if result is None:
+            logger.warning(f"Own inference returned None for artifacts at {model_dir}")
+            return False, None
         return True, result
     except Exception as exc:
         logger.warning(f"Own inference failed for artifacts at {model_dir}: {exc}")

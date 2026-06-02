@@ -8,9 +8,15 @@ from src.inference.strategies import (
     InferenceCatboost,
     InferenceSentenceTransformer,
     LSTMClassifier,
+    extract_logits,
     generate_sentiment_score,
     format_input,
-    Model
+    load_nb10_inference_bundle,
+    load_nb5_inference_bundle,
+    load_nb6_inference_bundle,
+    load_nb8_inference_bundle,
+    load_nb9_inference_bundle,
+    Model,
 )
 
 logger = logging.getLogger(__name__)
@@ -133,21 +139,11 @@ class InferenceNb5(InferenceTransformers):
 
     def testInference(self, path: str | Path, prompt):
         import torch
-        from pathlib import Path
-        import json
 
-        with open(list(Path(path).rglob("*.json"))[0], "r") as f:
-            vocab = json.load(f)
-
-        prompt = self.encode(prompt, vocab)
-
-        model_path = list(Path(path).rglob("*.pt"))[0]
         try:
-            import warnings
-
-            with warnings.catch_warnings():
-                warnings.simplefilter("ignore")
-                model = torch.load(model_path, map_location="cpu", weights_only=False)
+            bundle = load_nb5_inference_bundle(path)
+            prompt = self.encode(prompt, bundle["vocab"])
+            model = bundle["model"]
             model.eval()
             inputs = torch.tensor([prompt], dtype=torch.long)
             with torch.no_grad():
@@ -161,44 +157,11 @@ class InferenceNb5(InferenceTransformers):
 class InferenceNb6(InferenceTransformers):
     def testInference(self, path: str | Path, prompt):
         import torch
-        from pathlib import Path
-        from transformers import AutoTokenizer, AutoModel
-        from peft import get_peft_model, LoraConfig, TaskType
 
-        # Create a LoRA config
-        lora_config = LoraConfig(
-            r=8,                     # rank
-            lora_alpha=32,           # scaling
-            target_modules=["query","value"],  # which layers to inject LoRA into
-            lora_dropout=0.1,
-            bias="none",
-            task_type=TaskType.FEATURE_EXTRACTION,     # since we want embeddings, not classification
-        )
-
-        base_model = AutoModel.from_pretrained("gaunernst/bert-mini-uncased")
-        hidden_dim, new_hidden_dim = 256, 256
-        # Wrap BERT with LoRA
-        lora_model = get_peft_model(base_model, lora_config)
-        lora_model.print_trainable_parameters()
-
-        # Find tokenizer and model paths
-        path_obj = Path(path)
-        tokenizer_paths = list(path_obj.rglob("tokenizer_config.json"))
-        model_paths = list(path_obj.rglob("*.pth"))
-
-        if not model_paths:
-            raise ValueError(f"No config.json found in {path}")
-
-        model_path = model_paths[0]
-        tokenizer_path = tokenizer_paths[0].parent if tokenizer_paths else model_path
         try:
-            tokenizer = AutoTokenizer.from_pretrained(tokenizer_path)
-            import warnings
-
-            with warnings.catch_warnings():
-                warnings.simplefilter("ignore")
-                model = Model(lora_model, hidden_dim, new_hidden_dim, 2)
-                model.load_state_dict(torch.load(model_path, map_location="cpu"))
+            bundle = load_nb6_inference_bundle(path)
+            tokenizer = bundle["tokenizer"]
+            model = bundle["model"]
             model.eval()
             inputs = tokenizer(prompt, return_tensors="pt")
             with torch.no_grad():
@@ -219,32 +182,25 @@ class InferenceNb7(InferenceSentenceTransformer):
 class InferenceNb8(InferenceTransformers):
     def testInference(self, path: str | Path, prompt):
         import torch
-        from transformers import AutoTokenizer
 
-        path_obj = Path(path)
-        tokenizer_paths = list(path_obj.rglob("tokenizer_config.json"))
-        model_paths = list(path_obj.rglob("*.pt"))
-
-        if not model_paths:
-            return super().testInference(path, prompt)
-
-        tokenizer_path = tokenizer_paths[0].parent if tokenizer_paths else path_obj
-        model_path = model_paths[0]
-
-        tokenizer = AutoTokenizer.from_pretrained(tokenizer_path)
         try:
-            model = torch.load(model_path, map_location="cpu", weights_only=False)
+            bundle = load_nb8_inference_bundle(path)
+            tokenizer = bundle["tokenizer"]
+            model = bundle["model"]
             model.eval()
             inputs = tokenizer(
                 prompt,
                 return_tensors="pt",
                 padding="max_length",
-                max_length=66,
+                max_length=90,
                 truncation=True,
             )
             with torch.no_grad():
-                out = model(inputs["input_ids"])
-            return out.argmax(dim=-1).item()
+                if bundle["type"] == "hf":
+                    logits = extract_logits(model(**inputs))
+                else:
+                    logits = model(inputs["input_ids"])
+            return logits.argmax(dim=-1).item()
         except Exception as e:
             logger.warning(f"Failed Nb8 PyTorch inference: {e}")
             return None
@@ -253,33 +209,26 @@ class InferenceNb8(InferenceTransformers):
 class InferenceNb9(InferenceTransformers):
     def testInference(self, path: str | Path, prompt):
         import torch
-        from transformers import AutoTokenizer
 
-        path_obj = Path(path)
-        tokenizer_paths = list(path_obj.rglob("tokenizer_config.json"))
-        model_paths = list(path_obj.rglob("*.pt"))
-
-        if not model_paths:
-            return super().testInference(path, prompt)
-
-        tokenizer_path = tokenizer_paths[0].parent if tokenizer_paths else path_obj
-        model_path = model_paths[0]
-
-        tokenizer = AutoTokenizer.from_pretrained(tokenizer_path)
         try:
-            model = torch.load(model_path, map_location="cpu", weights_only=False)
+            bundle = load_nb9_inference_bundle(path)
+            tokenizer = bundle["tokenizer"]
+            model = bundle["model"]
             model.eval()
             inputs = tokenizer(
                 prompt,
                 return_tensors="pt",
                 padding="max_length",
-                max_length=66,
+                max_length=128,
                 truncation=True,
             )
             with torch.no_grad():
-                out = model(inputs["input_ids"],
-                    attention_mask=inputs["attention_mask"],)
-            return out.logits.argmax(dim=-1).item()
+                if bundle["type"] == "hf":
+                    out = model(**inputs)
+                else:
+                    out = model(inputs["input_ids"], attention_mask=inputs["attention_mask"])
+                logits = extract_logits(out)
+            return logits.argmax(dim=-1).item()
         except Exception as e:
             logger.warning(f"Failed Nb9 PyTorch inference: {e}")
             return None
@@ -288,33 +237,26 @@ class InferenceNb9(InferenceTransformers):
 class InferenceNb10(InferenceTransformers):
     def testInference(self, path: str | Path, prompt):
         import torch
-        from transformers import AutoTokenizer
 
-        path_obj = Path(path)
-        tokenizer_paths = list(path_obj.rglob("tokenizer_config.json"))
-        model_paths = list(path_obj.rglob("*.pt"))
-
-        if not model_paths:
-            return super().testInference(path, prompt)
-
-        tokenizer_path = tokenizer_paths[0].parent if tokenizer_paths else path_obj
-        model_path = model_paths[0]
-
-        tokenizer = AutoTokenizer.from_pretrained(tokenizer_path)
         try:
-            model = torch.load(model_path, map_location="cpu", weights_only=False)
+            bundle = load_nb10_inference_bundle(path)
+            tokenizer = bundle["tokenizer"]
+            model = bundle["model"]
             model.eval()
             inputs = tokenizer(
                 prompt,
                 return_tensors="pt",
                 padding="max_length",
-                max_length=66,
+                max_length=128,
                 truncation=True,
             )
             with torch.no_grad():
-                out = model(inputs["input_ids"],
-                    attention_mask=inputs["attention_mask"],)
-            return out.logits.sum().item()
+                if bundle["type"] == "hf":
+                    out = model(**inputs)
+                else:
+                    out = model(inputs["input_ids"], attention_mask=inputs["attention_mask"])
+                logits = extract_logits(out)
+            return float(logits.sum().item())
         except Exception as e:
             logger.warning(f"Failed Nb10 PyTorch inference: {e}")
             return None

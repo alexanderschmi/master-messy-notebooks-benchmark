@@ -22,7 +22,7 @@ Your job is to make focused changes and investigations in the benchmark workflow
 4. When debugging scoring failures, inspect `src/scoring/pipeline.py`, `src/scoring/utils.py`, and the matching notebook strategy in `src/inference/notebooks.py` before widening scope.
 5. When debugging generation failures, inspect the selected runner, prompt/config loading, and file extraction logic before touching downstream scoring.
 6. Validate with the narrowest relevant command, such as `python benchmark.py --score-only`, a targeted benchmark invocation, or the specific reporting command affected by the change.
-7. If anything is unclear, you can ask up to three targeted clarifying questions before proceeding with the task.
+7. If anything is unclear, ask up to 3 clarifying questions in a single message before proceeding.
 
 ## Output Format
 Return a concise engineering update that includes:

@@ -89,13 +89,15 @@ The canonical output layout is:
 output/
   nbX/
     <runner>/
-      <model>_complexity_<N>_run_<R>/
-        train.py
-        inference.py
-        requirements.txt
-        metrics.json
-        history.json
-        input/
+      <complexity>/
+        <run>/
+          <model>/
+            train.py
+            inference.py
+            requirements.txt
+            metrics.json
+            history.json
+            input/
 ```
 
 ## Runner System
@@ -271,7 +273,7 @@ python aggregate_metrics.py
 ### When making changes
 
 - Prefer small, local edits over broad refactors
-- Preserve output folder naming: `<model>_complexity_<N>_run_<R>`
+- Preserve output folder naming: `<complexity>/<run>/<model>` under each `output/<nb>/<runner>/`
 - Preserve the expected generated filenames: `train.py`, `inference.py`, `requirements.txt`
 - Keep scoring behavior backward-compatible with existing `output/` contents when possible
 - Treat `data/` as benchmark ground truth, not a casual workspace

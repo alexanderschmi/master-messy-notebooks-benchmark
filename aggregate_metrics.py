@@ -1,20 +1,19 @@
 import argparse
 import csv
 import json
-import re
 from collections import defaultdict
 from pathlib import Path
-from typing import Dict, Tuple
+from typing import Dict
 
+from src.core.output_layout import parse_run_dir
 
-RUN_DIR_PATTERN = re.compile(r"^(?P<model>.+)_complexity_(?P<complexity>[^_]+)_run_(?P<run>\d+)$")
 
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description=(
             "Aggregate mean time_taken and token usage per model-runner combination "
-            "from output/**/**/**/metrics.json files."
+            "from output/**/**/**/**/metrics.json files."
         )
     )
     parser.add_argument(
@@ -30,19 +29,6 @@ def parse_args() -> argparse.Namespace:
         help="Where to save the aggregated CSV (default: <output-dir>/metrics_report_aggregated.csv)",
     )
     return parser.parse_args()
-
-
-def parse_run_folder_name(folder_name: str) -> Tuple[str, str, int]:
-    match = RUN_DIR_PATTERN.match(folder_name)
-    if not match:
-        raise ValueError(f"Invalid run folder format: {folder_name}")
-
-    model = match.group("model")
-    complexity = match.group("complexity")
-    run = int(match.group("run"))
-    return model, complexity, run
-
-
 def file_token_totals(usage: Dict) -> Dict[str, int]:
     totals = {
         "prompt_tokens": 0,
@@ -98,7 +84,7 @@ def file_token_totals(usage: Dict) -> Dict[str, int]:
 
 
 def aggregate(output_dir: Path):
-    metrics_files = sorted(output_dir.glob("*/*/*/metrics.json"))
+    metrics_files = sorted(output_dir.glob("*/*/*/*/*/metrics.json"))
     grouped = defaultdict(
         lambda: {
             "count": 0,
@@ -114,13 +100,18 @@ def aggregate(output_dir: Path):
     for metrics_path in metrics_files:
         try:
             rel = metrics_path.relative_to(output_dir)
-            if len(rel.parts) < 4:
+            if len(rel.parts) < 6:
                 skipped += 1
                 continue
 
-            notebook, runner, run_dir = rel.parts[0], rel.parts[1], rel.parts[2]
-            _ = notebook
-            model, _, _ = parse_run_folder_name(run_dir)
+            model_dir = metrics_path.parent
+            meta = parse_run_dir(model_dir, output_dir)
+            if meta is None:
+                skipped += 1
+                continue
+
+            model = meta["model"]
+            runner = meta["runner"]
 
             with metrics_path.open("r", encoding="utf-8") as f:
                 payload = json.load(f)

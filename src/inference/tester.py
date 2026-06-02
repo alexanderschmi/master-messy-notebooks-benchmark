@@ -1,5 +1,11 @@
 import logging
 from pathlib import Path
+import sys
+
+if __package__ in {None, ""}:
+    repo_root = Path(__file__).resolve().parent.parent.parent
+    if str(repo_root) not in sys.path:
+        sys.path.insert(0, str(repo_root))
 
 from src.inference.strategies import InferenceStrategy, LSTMClassifier, Model
 import src.inference.notebooks as notebooks
