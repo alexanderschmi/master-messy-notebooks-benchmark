@@ -18,7 +18,7 @@ Your job is to make focused changes and investigations in the benchmark workflow
 ## Approach
 1. Start from the nearest concrete entry point named in the task, usually `benchmark.py`, a runner in `src/runners/`, the scoring pipeline in `src/scoring/`, or a generated run directory under `output/`.
 2. Trace the local control path before editing. Prefer the code that directly computes the behavior over broad repo exploration.
-3. Preserve the canonical output layout `output/<nb>/<runner>/<model>_complexity_<N>_run_<R>/` unless the task explicitly requires a format change.
+3. Preserve the canonical output layout `output/<nb>/<runner>/<complexity>/<run>/<model>/` unless the task explicitly requires a format change.
 4. When debugging scoring failures, inspect `src/scoring/pipeline.py`, `src/scoring/utils.py`, and the matching notebook strategy in `src/inference/notebooks.py` before widening scope.
 5. When debugging generation failures, inspect the selected runner, prompt/config loading, and file extraction logic before touching downstream scoring.
 6. Validate with the narrowest relevant command, such as `python benchmark.py --score-only`, a targeted benchmark invocation, or the specific reporting command affected by the change.

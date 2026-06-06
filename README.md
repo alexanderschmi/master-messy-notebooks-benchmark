@@ -27,13 +27,19 @@ pip install torch==2.9.1 --index-url https://download.pytorch.org/whl/cu121
 
 **Running the scoring pipeline and some of the notebooks needs CUDA enabled.**
 
-2. Install remaining dependencies:
+2. Install remaining dependencies with Poetry:
 
 ```bash
-pip install -r requirements.txt
+poetry install
 ```
 
-Set environment variables for your API keys (referenced in `configs/config.yml`):
+Or for the agentic runner (OpenHands):
+
+```bash
+poetry install --with agentic
+```
+
+3. Set environment variables for your API keys (referenced in `configs/config.yml`):
 
 ```bash
 export GEMINI_API_KEY="your-key"
@@ -65,12 +71,6 @@ python benchmark.py --score-only
 
 # Save LLM prompt/response history to history.json
 python benchmark.py --save-history
-
-# Preview migration from legacy output folders to the new layout
-python migrate_output_layout.py --dry-run
-
-# Apply the migration
-python migrate_output_layout.py
 ```
 
 ### CLI Arguments
@@ -86,23 +86,6 @@ python migrate_output_layout.py
 | `--score` | off | Run scoring pipeline after generation |
 | `--score-only` | off | Skip generation, run scoring only |
 | `--save-history` | off | Save LLM prompt/response history as `history.json` |
-
-### Migrating Existing Outputs
-
-If you already have benchmark runs stored in the legacy layout
-`output/<nb>/<runner>/<model>_complexity_<N>_run_<R>`, migrate them to the
-current layout `output/<nb>/<runner>/<complexity>/<run>/<model>` with:
-
-```bash
-# inspect planned moves
-python migrate_output_layout.py --dry-run
-
-# perform the move
-python migrate_output_layout.py
-```
-
-By default, the migration stops on conflicts. You can also use
-`--on-conflict skip` or `--on-conflict overwrite`.
 
 ---
 
@@ -206,33 +189,35 @@ output/
 
 ---
 
-## Docker
+## Analysis Scripts
 
-```bash
-docker build -t notebook-benchmark .
-docker run \
-  -e GEMINI_API_KEY="..." \
-  -e CHATAI_API_KEY="..." \
-  -v $(pwd)/output:/app/output \
-  notebook-benchmark --runs 2 --score
-```
+Post-processing scripts for reporting and visualization live in `scripts/`:
+
+| Script | Purpose |
+|---|---|
+| `scripts/visualize.py` | Builds publication-style figures from scoring results |
+| `scripts/aggregate_metrics.py` | Aggregates runtime and token metrics into a single CSV |
+| `scripts/evaluate_model_performance.py` | Evaluates real ML model performance of generated code |
+| `scripts/compare_own_inference_vs_real.py` | Compares generated inference outputs against reference artifacts |
 
 ---
 
 ## Project Structure
 
 ```
-benchmark.py          # Entry point and orchestration
+benchmark.py              # Entry point and orchestration
+setup.py                  # Notebook pre-execution (generates reference outputs)
 configs/
-  config.yml          # Models and settings
-  prompt.yml          # Complexity-stratified prompts
-  inference.yml       # Per-notebook inference hints
+  config.yml              # Models and settings
+  prompt.yml              # Complexity-stratified prompts
+  inference.yml           # Per-notebook inference hints
 data/
-  nb1/ … nb10/        # Notebooks and input datasets
+  nb1/ … nb10/            # Notebooks and input datasets
 src/
-  core/               # Notebook parsing, DSPy config, file I/O, logging
-  runners/            # BaseRunner, LLMRunner, CoTRunner, OpenHandsRunner
-  scoring/            # Evaluator, pipeline, utilities
-  inference/          # Inference testing helpers
-output/               # Generated code and scoring results
+  core/                   # Notebook parsing, DSPy config, file I/O, logging
+  runners/                # BaseRunner, LLMRunner, CoTRunner, OpenHandsRunner
+  scoring/                # Evaluator, pipeline, utilities
+  inference/              # Inference testing helpers
+scripts/                  # Post-processing analysis and visualization
+output/                   # Generated code and scoring results (git-ignored)
 ```

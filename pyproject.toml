@@ -1,34 +1,44 @@
 [tool.poetry]
 name = "master-messy-notebooks-benchmark"
 version = "0.1.0"
-description = ""
+description = "Benchmark for evaluating LLMs on converting messy Jupyter notebooks into clean Python code"
 authors = []
 readme = "README.md"
 packages = [{include = "src"}]
 
 [tool.poetry.dependencies]
 python = ">=3.12,<3.13"
-datasets = "4.5.0"
+
+# Core benchmark
 dspy = "3.1.2"
-matplotlib = "3.10.8"
+envyaml = "1.10.211231"
+pydantic = "2.12.5"
+tqdm = "4.67.1"
+
+# Scoring & metrics
+radon = "6.0.1"
 nltk = "3.9.2"
+sentence-transformers = "5.2.0"
+
+# Data & ML (needed for notebook execution during scoring)
+datasets = "4.5.0"
 numpy = "2.3.5"
 pandas = "2.3.3"
-radon = "6.0.1"
 scikit-learn = "1.8.0"
-seaborn = "0.13.2"
-tqdm = "4.67.1"
-sentence-transformers = "5.2.0"
-transformers = "4.57.5"
-wordcloud = "1.9.6"
-xgboost = "3.1.3"
-pydantic = "2.12.5"
 scipy = "1.17.0"
+transformers = "4.57.5"
+xgboost = "3.1.3"
 catboost = "1.2.8"
 lightgbm = "4.6.0"
 peft = "0.18.1"
 seqeval = "1.2.2"
-envyaml = "1.10.211231"
+
+# Visualization
+matplotlib = "3.10.8"
+seaborn = "0.13.2"
+wordcloud = "1.9.6"
+
+[tool.poetry.group.agentic.dependencies]
 openhands = "1.13.0"
 openhands-sdk = "1.11.5"
 
