@@ -7,10 +7,10 @@ models:
     model: gemini-2.5-flash
     api_key: ${GEMINI_API_KEY}
     api_base: "https://generativelanguage.googleapis.com/v1beta"
-  - provider: openai
-    model: apertus-70b-instruct-2509
-    api_key: ${CHATAI_API_KEY}
-    api_base: "https://chat-ai.academiccloud.de/v1"
+#  - provider: openai
+#    model: apertus-70b-instruct-2509
+#    api_key: ${CHATAI_API_KEY}
+#    api_base: "https://chat-ai.academiccloud.de/v1"
   - provider: openai
     model: devstral-2-123b-instruct-2512
     api_key: ${CHATAI_API_KEY}
@@ -19,10 +19,10 @@ models:
     model: deepseek-r1-distill-llama-70b
     api_key: ${CHATAI_API_KEY}
     api_base: "https://chat-ai.academiccloud.de/v1"
-  - provider: openai
-    model: gemma-3-27b-it
-    api_key: ${CHATAI_API_KEY}
-    api_base: "https://chat-ai.academiccloud.de/v1"
+#  - provider: openai
+#    model: gemma-3-27b-it
+#    api_key: ${CHATAI_API_KEY}
+#    api_base: "https://chat-ai.academiccloud.de/v1"
   - provider: openai
     model: glm-4.7
     api_key: ${CHATAI_API_KEY}
@@ -55,22 +55,22 @@ models:
     model: openai-gpt-oss-120b
     api_key: ${CHATAI_API_KEY}
     api_base: "https://chat-ai.academiccloud.de/v1"
-  - provider: openai
-    model: qwen3-235b-a22b
-    api_key: ${CHATAI_API_KEY}
-    api_base: "https://chat-ai.academiccloud.de/v1"
+#  - provider: openai
+#    model: qwen3-235b-a22b
+#    api_key: ${CHATAI_API_KEY}
+#    api_base: "https://chat-ai.academiccloud.de/v1"
   - provider: openai
     model: qwen3-30b-a3b-instruct-2507
     api_key: ${CHATAI_API_KEY}
     api_base: "https://chat-ai.academiccloud.de/v1"
-  - provider: openai
-    model: qwen3-30b-a3b-thinking-2507
-    api_key: ${CHATAI_API_KEY}
-    api_base: "https://chat-ai.academiccloud.de/v1"
-  - provider: openai
-    model: qwen3-32b
-    api_key: ${CHATAI_API_KEY}
-    api_base: "https://chat-ai.academiccloud.de/v1"
+#  - provider: openai
+#    model: qwen3-30b-a3b-thinking-2507
+#    api_key: ${CHATAI_API_KEY}
+#    api_base: "https://chat-ai.academiccloud.de/v1"
+#  - provider: openai
+#    model: qwen3-32b
+#    api_key: ${CHATAI_API_KEY}
+#    api_base: "https://chat-ai.academiccloud.de/v1"
   - provider: openai
     model: qwen3-coder-30b-a3b-instruct
     api_key: ${CHATAI_API_KEY}
@@ -79,27 +79,27 @@ models:
     model: qwen3-omni-30b-a3b-instruct
     api_key: ${CHATAI_API_KEY}
     api_base: "https://chat-ai.academiccloud.de/v1"
-  - provider: openai
-    model: qwen3-vl-30b-a3b-instruct
-    api_key: ${CHATAI_API_KEY}
-    api_base: "https://chat-ai.academiccloud.de/v1"
-  - provider: openai
-    model: nvidia/nemotron-3-nano-30b-a3b:free
-    api_key: ${OPENROUTER_API_KEY}
-    api_base: "https://openrouter.ai/api/v1"
+#  - provider: openai
+#    model: qwen3-vl-30b-a3b-instruct
+#    api_key: ${CHATAI_API_KEY}
+#    api_base: "https://chat-ai.academiccloud.de/v1"
+#  - provider: openai
+#    model: nvidia/nemotron-3-nano-30b-a3b:free
+#    api_key: ${OPENROUTER_API_KEY}
+#    api_base: "https://openrouter.ai/api/v1"
   - provider: gemini
     model: gemma-4-31b-it
     api_key: ${GEMINI_API_KEY}
     api_base: "https://generativelanguage.googleapis.com/v1beta"
-  - provider: openai
-    model: gemma-4-e4b-it-mlx
-    api_key: "lmstudio"
-    api_base: "http://192.168.178.40:1234/v1"
-  - provider: openai
-    model: gemma-4-26b-a4b-it-mlx
-    api_key: "lmstudio"
-    api_base: "http://192.168.178.40:1234/v1"
-  - provider: openai
-    model: gemma-4-e2b-it-mlx
-    api_key: "lmstudio"
-    api_base: "http://192.168.178.40:1234/v1"
+#  - provider: openai
+#    model: gemma-4-e4b-it-mlx
+#    api_key: "lmstudio"
+#    api_base: "http://192.168.178.40:1234/v1"
+#  - provider: openai
+#    model: gemma-4-26b-a4b-it-mlx
+#    api_key: "lmstudio"
+#    api_base: "http://192.168.178.40:1234/v1"
+#  - provider: openai
+#    model: gemma-4-e2b-it-mlx
+#    api_key: "lmstudio"
+#    api_base: "http://192.168.178.40:1234/v1"

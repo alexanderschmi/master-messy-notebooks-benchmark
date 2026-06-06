@@ -305,6 +305,7 @@ def load_nb8_inference_bundle(path: str | Path) -> dict[str, Any]:
     __main__.EmotionCNN = EmotionCNNCompat
     __main__.TextCNN = EmotionCNNCompat
     __main__.CNNClassifier = EmotionCNNCompat
+    __main__.CNNEmotionModel = EmotionCNNCompat
     __main__.CNNTextClassifier = EmotionCNNCompat
     __main__.Permute = Permute
     __main__.Transpose = Transpose

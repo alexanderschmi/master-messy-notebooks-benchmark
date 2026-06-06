@@ -15,10 +15,10 @@ from src.scoring.utils import (
 
 logger = logging.getLogger(__name__)
 
-SCORE_KEY_COLS = ["notebook_id", "runner", "model", "complexity", "run"]
+SCORE_KEY_COLS = ["notebook_id", "runner", "model", "complexity", "notebook_order", "run"]
 
 
-def _iter_model_dirs(output_path: Path, target_nb, target_runner, target_model, target_complexity):
+def _iter_model_dirs(output_path: Path, target_nb, target_runner, target_model, target_complexity, target_notebook_order):
     """
     Walk ``output_path`` and yield ``(nb_id, runner_name, model_dir, meta)``
     for every model directory that passes all target filters.
@@ -32,6 +32,8 @@ def _iter_model_dirs(output_path: Path, target_nb, target_runner, target_model, 
             continue
         if target_complexity and meta["complexity"] != int(target_complexity):
             continue
+        if target_notebook_order and meta["notebook_order"] != target_notebook_order:
+            continue
 
         yield nb_id, runner_name, model_dir, meta
 
@@ -40,7 +42,15 @@ def _iter_model_dirs(output_path: Path, target_nb, target_runner, target_model, 
 # Already-scored check
 # ---------------------------------------------------------------------------
 
-def _is_already_scored(existing_df: pd.DataFrame, nb_id: str, runner: str, model: str, complexity: int, run: int) -> bool:
+def _is_already_scored(
+    existing_df: pd.DataFrame,
+    nb_id: str,
+    runner: str,
+    model: str,
+    complexity: int,
+    notebook_order: str,
+    run: int,
+) -> bool:
     """Return True if this exact run already exists in the existing report."""
     if existing_df.empty:
         return False
@@ -49,6 +59,7 @@ def _is_already_scored(existing_df: pd.DataFrame, nb_id: str, runner: str, model
         (existing_df["runner"] == runner) &
         (existing_df["model"] == model) &
         (existing_df["complexity"] == complexity) &
+        (existing_df["notebook_order"] == notebook_order) &
         (existing_df["run"] == run)
     )
     return not existing_df[mask].empty
@@ -132,6 +143,8 @@ def _load_existing_report(report_path: Path) -> pd.DataFrame:
         return pd.DataFrame()
     try:
         df = pd.read_csv(report_path, dtype={"complexity": int})
+        if "notebook_order" not in df.columns:
+            df["notebook_order"] = "original"
         logger.info(f"Loaded existing report from {report_path} ({len(df)} rows)")
         return df
     except Exception as exc:
@@ -167,7 +180,7 @@ def _save_reports(df: pd.DataFrame, output_path: Path) -> None:
 
         agg_cols = individual_cols + ["train_success", "inference_success", "overall_success"]
         agg_df = (
-            work.groupby(["model", "runner", "complexity"], as_index=False)[agg_cols]
+            work.groupby(["model", "runner", "complexity", "notebook_order"], as_index=False)[agg_cols]
             .mean()
             .round(4)
         )
@@ -177,8 +190,8 @@ def _save_reports(df: pd.DataFrame, output_path: Path) -> None:
         ).where(agg_df["train_success"] > 0, other=0.0).round(4)
 
         # Overall: mean of the three independent success dimensions
-        req = work.groupby(["model", "runner", "complexity"], as_index=False)["requirements_match_score"].mean().round(4)
-        agg_df = agg_df.merge(req, on=["model", "runner", "complexity"], how="left")
+        req = work.groupby(["model", "runner", "complexity", "notebook_order"], as_index=False)["requirements_match_score"].mean().round(4)
+        agg_df = agg_df.merge(req, on=["model", "runner", "complexity", "notebook_order"], how="left")
         agg_df["overall_success"] = (
             (agg_df["train_success"] + agg_df["inference_success_cond"] + agg_df["requirements_match_score"]) / 3
         ).round(4)
@@ -203,6 +216,7 @@ def score_pipeline(
     target_model=None,
     target_complexity=None,
     target_runner=None,
+    target_notebook_order=None,
 ):
     """
     Walk the output directory, score every model run that hasn't been scored
@@ -222,15 +236,19 @@ def score_pipeline(
     new_rows = []
 
     for nb_id, runner_name, model_dir, meta in _iter_model_dirs(
-        output_path, target_nb, target_runner, target_model, target_complexity
+        output_path, target_nb, target_runner, target_model, target_complexity, target_notebook_order
     ):
-        model, complexity, run = meta["model"], meta["complexity"], meta["run"]
+        model, complexity, notebook_order, run = meta["model"], meta["complexity"], meta["notebook_order"], meta["run"]
 
-        if _is_already_scored(existing_df, nb_id, runner_name, model, complexity, run):
-            logger.info(f"Skipping (already scored): {nb_id} / {runner_name} / {model} complexity={complexity} run={run}")
+        if _is_already_scored(existing_df, nb_id, runner_name, model, complexity, notebook_order, run):
+            logger.info(
+                f"Skipping (already scored): {nb_id} / {runner_name} / {model} complexity={complexity} order={notebook_order} run={run}"
+            )
             continue
 
-        logger.info(f"Scoring: {nb_id} / {runner_name} / {model} complexity={complexity} run={run}")
+        logger.info(
+            f"Scoring: {nb_id} / {runner_name} / {model} complexity={complexity} order={notebook_order} run={run}"
+        )
 
         train_py = model_dir / "train.py"
         inference_py = model_dir / "inference.py"
@@ -241,6 +259,7 @@ def score_pipeline(
             "model": model,
             "runner": runner_name,
             "complexity": complexity,
+            "notebook_order": notebook_order,
             "run": run,
         }
 

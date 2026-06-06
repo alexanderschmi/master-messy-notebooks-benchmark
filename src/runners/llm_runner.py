@@ -121,6 +121,7 @@ class _BaseLLMRunner(BaseRunner):
         save_history: bool,
         output_dir: str,
         complexity: int,
+        notebook_order: str,
         run: int,
     ) -> None:
         model = params.get("model", params.get("name", "unknown_model"))
@@ -187,7 +188,17 @@ class _BaseLLMRunner(BaseRunner):
         time_taken = end_time - start_time
         usage = answer.get_lm_usage() if hasattr(answer, "get_lm_usage") else fallback_usage
 
-        generate_files_from_answer((nb_id, answer, history_dict), output_dir, model, complexity, time_taken, usage, runner=self.RUNNER_NAME, run=run)
+        generate_files_from_answer(
+            (nb_id, answer, history_dict),
+            output_dir,
+            model,
+            complexity,
+            time_taken,
+            usage,
+            runner=self.RUNNER_NAME,
+            run=run,
+            notebook_order=notebook_order,
+        )
 
 
 class LLMRunner(_BaseLLMRunner):

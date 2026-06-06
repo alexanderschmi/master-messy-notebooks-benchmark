@@ -28,7 +28,7 @@ from typing import Any
 
 import pandas as pd
 
-from src.core import build_run_dir
+from src.core.output_layout import resolve_run_dir
 from src.scoring.utils import get_inference_strategy
 
 logger = logging.getLogger(__name__)
@@ -91,13 +91,14 @@ def _compare_values(
 
 
 def _build_generated_model_dir(root: Path, row: pd.Series) -> Path:
-    return build_run_dir(
+    return resolve_run_dir(
         root / "output",
         str(row["notebook_id"]),
         str(row["runner"]),
         int(row["complexity"]),
         int(row["run"]),
         str(row["model"]),
+        notebook_order=str(row.get("notebook_order", "original")),
     )
 
 
@@ -129,6 +130,7 @@ def run_comparison(
             "runner": str(row["runner"]),
             "model": str(row["model"]),
             "complexity": int(row["complexity"]),
+            "notebook_order": str(row.get("notebook_order", "original")),
             "run": int(row["run"]),
             "generated_model_dir": str(generated_dir),
             "real_artifact_dir": str(real_dir),

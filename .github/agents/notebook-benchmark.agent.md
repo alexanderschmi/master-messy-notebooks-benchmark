@@ -6,6 +6,8 @@ user-invocable: true
 ---
 You are a specialist for this repository, which benchmarks how well LLM systems convert messy Jupyter notebooks into reusable Python code.
 
+Use [AGENT.md](../../AGENT.md) as the repository-specific operating guide for control flow, output layout, scoring conventions, and debugging order.
+
 Your job is to make focused changes and investigations in the benchmark workflow, especially around notebook parsing, runner behavior, generated output layout, scoring, inference validation, aggregation, and visualization.
 
 ## Constraints
@@ -18,7 +20,11 @@ Your job is to make focused changes and investigations in the benchmark workflow
 ## Approach
 1. Start from the nearest concrete entry point named in the task, usually `benchmark.py`, a runner in `src/runners/`, the scoring pipeline in `src/scoring/`, or a generated run directory under `output/`.
 2. Trace the local control path before editing. Prefer the code that directly computes the behavior over broad repo exploration.
+<<<<<<< Updated upstream
 3. Preserve the canonical output layout `output/<nb>/<runner>/<complexity>/<run>/<model>/` unless the task explicitly requires a format change.
+=======
+3. Preserve the canonical output layout `output/<nb>/<runner>/<complexity>/<notebook_order>/<run>/<model>/` unless the task explicitly requires a format change.
+>>>>>>> Stashed changes
 4. When debugging scoring failures, inspect `src/scoring/pipeline.py`, `src/scoring/utils.py`, and the matching notebook strategy in `src/inference/notebooks.py` before widening scope.
 5. When debugging generation failures, inspect the selected runner, prompt/config loading, and file extraction logic before touching downstream scoring.
 6. Validate with the narrowest relevant command, such as `python benchmark.py --score-only`, a targeted benchmark invocation, or the specific reporting command affected by the change.

@@ -15,12 +15,20 @@ from src.core.logger import setup_logger, worker_init
 
 logger = logging.getLogger(__name__)
 
-def proxy(params, notebook, temperature, complexity, save_history, output_dir, run_id):
+def proxy(params, notebook, temperature, complexity, notebook_order, save_history, output_dir, run_id):
     model_name = params.get("model", params.get("name", "unknown_model"))
     runner = params.get("runner", "simple")
     nb_id, _ = notebook
 
-    base_path = build_run_dir(output_dir, nb_id, runner, complexity, run_id, model_name)
+    base_path = build_run_dir(
+        output_dir,
+        nb_id,
+        runner,
+        complexity,
+        run_id,
+        model_name,
+        notebook_order=notebook_order,
+    )
     if base_path.exists():
         logger.info(f"Skipping already generated: {base_path}")
         return
@@ -33,6 +41,7 @@ def proxy(params, notebook, temperature, complexity, save_history, output_dir, r
             save_history=save_history,
             output_dir=output_dir,
             complexity=complexity,
+            notebook_order=notebook_order,
             run=run_id,
         )
 
@@ -41,22 +50,39 @@ def proxy(params, notebook, temperature, complexity, save_history, output_dir, r
         logger.warning(error_msg)
 
 
-def run_benchmark(notebooks, models_to_test, temperature, output_dir, complexity, save_history, runs, log_queue=None):
+def run_benchmark(
+    notebooks,
+    models_to_test,
+    temperature,
+    output_dir,
+    complexity,
+    save_history,
+    runs,
+    data_dir,
+    notebook_order,
+    log_queue=None,
+):
     logger.info(f"Starting Benchmark on {len(models_to_test)} models, {len(notebooks)} notebooks for {runs} runs ...\n")
+    notebook_positions = {nb_id: index for index, (nb_id, _) in enumerate(notebooks)}
 
     with concurrent.futures.ProcessPoolExecutor(
         max_workers=5,
         initializer=worker_init if log_queue else None,
         initargs=(log_queue,) if log_queue else ()
     ) as executor:
-        for notebook in notebooks:
-            logger.info(f"Running models for notebook: {notebook[0]}...")
-            for run_id in range(1, runs + 1):
+        for run_id in range(1, runs + 1):
+            notebooks_for_run = load_notebooks(data_dir, order_mode=notebook_order, run_id=run_id)
+            notebooks_for_run = [nb for nb in notebooks_for_run if nb[0] in notebook_positions]
+            notebooks_for_run.sort(key=lambda nb: notebook_positions[nb[0]])
+
+            for notebook in notebooks_for_run:
+                logger.info(f"Running models for notebook: {notebook[0]} (run {run_id})...")
                 list(executor.map(proxy, 
                              models_to_test, 
                              itertools.repeat(notebook), 
                              itertools.repeat(temperature), 
                              itertools.repeat(complexity), 
+                             itertools.repeat(notebook_order),
                              itertools.repeat(save_history), 
                              itertools.repeat(output_dir),
                              itertools.repeat(run_id)))
@@ -111,6 +137,13 @@ if __name__ == "__main__":
         type=str,
         default="simple",
         help="The runner engine to use."
+    )
+    parser.add_argument(
+        "--notebook-order",
+        type=str,
+        default="original",
+        choices=["original", "adjacent-swap"],
+        help="Notebook cell ordering mode: original or deterministic adjacent-swap fixed across runs.",
     )
     parser.add_argument(
         "--save-history",
@@ -177,7 +210,19 @@ if __name__ == "__main__":
 
     if not args.score_only:
         logger.info(f"Running models: {[m.get('model', m.get('name')) for m in models_to_test]} against {[nb[0] for nb in notebooks]}")
-        run_benchmark(notebooks=notebooks, models_to_test=models_to_test, temperature=temperature, output_dir=output_dir, complexity=complexity, save_history=save_history, runs=args.runs, log_queue=log_queue)
+        logger.info(f"Using notebook order mode '{args.notebook_order}'")
+        run_benchmark(
+            notebooks=notebooks,
+            models_to_test=models_to_test,
+            temperature=temperature,
+            output_dir=output_dir,
+            complexity=complexity,
+            save_history=save_history,
+            runs=args.runs,
+            data_dir=data_dir,
+            notebook_order=args.notebook_order,
+            log_queue=log_queue,
+        )
     else:
         logger.info("Score-only mode enabled. Skipping model execution.")
 
@@ -193,7 +238,8 @@ if __name__ == "__main__":
             target_nb=target_nb, 
             target_model=target_model,
             target_complexity=complexity,
-            target_runner=args.runner
+            target_runner=args.runner,
+            target_notebook_order=args.notebook_order,
         )
         
     queue_listener.stop()

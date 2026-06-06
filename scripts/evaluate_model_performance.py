@@ -39,7 +39,7 @@ from src.inference.strategies import (
 warnings.filterwarnings("ignore")
 logger = logging.getLogger(__name__)
 
-RUN_KEY_COLUMNS = ["notebook_id", "runner", "model", "complexity", "run"]
+RUN_KEY_COLUMNS = ["notebook_id", "runner", "model", "complexity", "notebook_order", "run"]
 
 
 def write_progress_log(level: str, message: str) -> None:
@@ -55,7 +55,7 @@ def load_successful_train_runs(
     target_runner: str | None = None,
     target_model: str | None = None,
     target_complexity: int | None = None,
-) -> set[tuple[str, str, str, int, int]]:
+) -> set[tuple[str, str, str, int, str, int]]:
     """Return run keys whose train.py completed with strict scoring success."""
 
     report_path = output_path / "scoring_report.csv"
@@ -69,6 +69,7 @@ def load_successful_train_runs(
         "runner",
         "model",
         "complexity",
+        "notebook_order",
         "run",
         "train_syntax_valid",
         "train_execution_success",
@@ -76,11 +77,15 @@ def load_successful_train_runs(
     }
     missing_cols = required_cols.difference(df.columns)
     if missing_cols:
-        logger.warning(
-            "Scoring report is missing required train success columns %s; no model runs will be evaluated.",
-            sorted(missing_cols),
-        )
-        return set()
+        if missing_cols == {"notebook_order"}:
+            df["notebook_order"] = "original"
+            missing_cols = set()
+        else:
+            logger.warning(
+                "Scoring report is missing required train success columns %s; no model runs will be evaluated.",
+                sorted(missing_cols),
+            )
+            return set()
 
     success_mask = (
         df["train_syntax_valid"].fillna(False).astype(bool)
@@ -104,6 +109,7 @@ def load_successful_train_runs(
             row.runner,
             row.model,
             int(row.complexity),
+            row.notebook_order,
             int(row.run),
         )
         for row in successful_df.itertuples(index=False)
@@ -133,7 +139,7 @@ def iter_model_dirs(output_path: Path, target_nb=None, target_runner=None, targe
         if target_complexity is not None and meta["complexity"] != target_complexity:
             continue
 
-        run_key = (nb_id, runner_name, meta["model"], meta["complexity"], meta["run"])
+        run_key = (nb_id, runner_name, meta["model"], meta["complexity"], meta["notebook_order"], meta["run"])
         if run_key not in successful_runs:
             continue
 
@@ -146,7 +152,13 @@ def load_existing_results(detailed_path: Path) -> pd.DataFrame:
     if not detailed_path.exists():
         return pd.DataFrame()
 
-    existing_df = pd.read_csv(detailed_path)
+    try:
+        existing_df = pd.read_csv(detailed_path)
+    except pd.errors.EmptyDataError:
+        logger.warning("Existing detailed results at %s are empty; starting fresh.", detailed_path)
+        return pd.DataFrame()
+    if "notebook_order" not in existing_df.columns:
+        existing_df["notebook_order"] = "original"
     missing_cols = [column for column in RUN_KEY_COLUMNS if column not in existing_df.columns]
     if missing_cols:
         logger.warning(
@@ -159,7 +171,7 @@ def load_existing_results(detailed_path: Path) -> pd.DataFrame:
     return existing_df
 
 
-def successful_run_keys(existing_df: pd.DataFrame) -> set[tuple[str, str, str, int, int]]:
+def successful_run_keys(existing_df: pd.DataFrame) -> set[tuple[str, str, str, int, str, int]]:
     """Return run keys that already evaluated successfully."""
 
     if existing_df.empty or "evaluation_success" not in existing_df.columns:
@@ -168,6 +180,8 @@ def successful_run_keys(existing_df: pd.DataFrame) -> set[tuple[str, str, str, i
     success_df = existing_df[existing_df["evaluation_success"].fillna(False).astype(bool)].copy()
     if success_df.empty:
         return set()
+    if "notebook_order" not in success_df.columns:
+        success_df["notebook_order"] = "original"
 
     return {
         (
@@ -175,6 +189,7 @@ def successful_run_keys(existing_df: pd.DataFrame) -> set[tuple[str, str, str, i
             row.runner,
             row.model,
             int(row.complexity),
+            row.notebook_order,
             int(row.run),
         )
         for row in success_df.itertuples(index=False)
@@ -183,7 +198,7 @@ def successful_run_keys(existing_df: pd.DataFrame) -> set[tuple[str, str, str, i
 
 def filter_results_to_allowed_runs(
     existing_df: pd.DataFrame,
-    allowed_run_keys: set[tuple[str, str, str, int, int]],
+    allowed_run_keys: set[tuple[str, str, str, int, str, int]],
 ) -> pd.DataFrame:
     """Keep only detailed result rows whose run keys still qualify for evaluation."""
 
@@ -193,12 +208,15 @@ def filter_results_to_allowed_runs(
         return existing_df.iloc[0:0].copy()
 
     keyed_df = existing_df.copy()
+    if "notebook_order" not in keyed_df.columns:
+        keyed_df["notebook_order"] = "original"
     keyed_df["_run_key"] = list(
         zip(
             keyed_df["notebook_id"],
             keyed_df["runner"],
             keyed_df["model"],
             keyed_df["complexity"].astype(int),
+            keyed_df["notebook_order"],
             keyed_df["run"].astype(int),
         )
     )
@@ -218,7 +236,7 @@ def build_summary(detailed_df: pd.DataFrame) -> pd.DataFrame:
         all_metric_cols.update(ev.metric_names)
 
     summary_df = (
-        success_df.groupby("model")
+        success_df.groupby(["model", "notebook_order"])
         .agg(
             total_evaluations=("notebook_id", "count"),
             successful_evaluations=("evaluation_success", "sum"),
@@ -1128,7 +1146,7 @@ def run_evaluation(
     model_runs = []
     skipped_runs = 0
     for nb_id, runner_name, model_dir, meta in all_candidate_runs:
-        run_key = (nb_id, runner_name, meta["model"], meta["complexity"], meta["run"])
+        run_key = (nb_id, runner_name, meta["model"], meta["complexity"], meta["notebook_order"], meta["run"])
         if run_key in prior_successes:
             skipped_runs += 1
             continue
@@ -1153,6 +1171,7 @@ def run_evaluation(
             "runner": runner_name,
             "model": meta["model"],
             "complexity": meta["complexity"],
+            "notebook_order": meta["notebook_order"],
             "run": meta["run"],
             "model_dir": str(model_dir),
             "evaluation_success": False,

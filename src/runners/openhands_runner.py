@@ -167,6 +167,7 @@ class OpenHandsRunner(BaseRunner):
         save_history: bool,
         output_dir: str,
         complexity: int,
+        notebook_order: str,
         run: int,
     ) -> None:
         model = params.get("model", params.get("name", "unknown_model"))
@@ -194,4 +195,14 @@ class OpenHandsRunner(BaseRunner):
             return
 
         logger.info(f"[OpenHands - {model}] Finished processing notebook {nb_id}")
-        generate_files_from_answer((nb_id, answer, None), output_dir, model, complexity, runner=self.RUNNER_NAME, run=run, usage=metrics, time_taken=total_time)
+        generate_files_from_answer(
+            (nb_id, answer, None),
+            output_dir,
+            model,
+            complexity,
+            runner=self.RUNNER_NAME,
+            run=run,
+            usage=metrics,
+            time_taken=total_time,
+            notebook_order=notebook_order,
+        )

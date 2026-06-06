@@ -2,107 +2,183 @@
 
 ## Project Summary
 
-This repository benchmarks how well LLM systems convert messy Jupyter notebooks into clean, reusable Python code.
+This repository benchmarks how well LLM systems convert messy Jupyter notebooks into reusable Python code.
 
-For each notebook under `data/nb1` through `data/nb10`, a runner generates:
+For each notebook under `data/nb1` through `data/nb10`, a runner is expected to produce:
 
 - `train.py`
 - `inference.py`
 - `requirements.txt`
 
-The benchmark then scores those outputs for syntax validity, execution success, artifact reproduction, inference correctness, and dependency overlap.
+The benchmark then scores those outputs for:
 
-The repo is organized around three phases:
+- dependency overlap with the notebook reference environment
+- Python syntax validity
+- training execution success
+- artifact reproduction
+- generated inference execution
+- repo-owned inference execution over produced artifacts
+- output agreement between generated and repo-owned inference
 
-1. Notebook loading and prompt-driven code generation
-2. Output scoring and report generation
-3. Aggregation and visualization for thesis/reporting use
+The repository is organized around four connected phases:
 
-## Main Entry Points
+1. notebook parsing and prompt preparation
+2. code generation through a selected runner
+3. scoring of generated runs
+4. aggregation and visualization for reporting
+
+## Primary Entry Points
 
 ### `benchmark.py`
 
 Primary orchestration script.
 
-- Loads model definitions from `configs/config.yml`
-- Loads prompt text from `configs/prompt.yml`
-- Parses notebooks from `data/`
-- Selects a runner: `simple`, `cot`, or `agentic`
-- Executes generation across notebooks and models using a `ProcessPoolExecutor`
-- Optionally runs scoring through `src.scoring.pipeline.score_pipeline`
+It:
 
-Important behavior:
+- loads model definitions from `configs/config.yml`
+- loads prompt text from `configs/prompt.yml`
+- parses notebooks from `data/`
+- injects the selected prompt into `src.core.dspy_config`
+- selects a runner: `simple`, `cot`, or `agentic`
+- executes generation across notebooks and models using a `ProcessPoolExecutor`
+- optionally runs scoring through `src.scoring.pipeline.score_pipeline`
 
-- Output directories are skipped if they already exist
-- Prompt complexity is stored in output folder names
-- `--score-only` skips generation and only evaluates existing outputs
-- Multiprocessing logging is configured through `src.core.logger`
+Important implemented behavior:
 
-### `visualize.py`
+- generation is skipped for any run directory that already exists
+- scoring can be run independently with `--score-only`
+- scoring is filtered by notebook, model, runner, complexity, and notebook order when those CLI flags are set
+- multiprocessing logging is configured through `src.core.logger`
+- notebook order can be `original` or deterministic `adjacent-swap`
 
-Builds publication-style figures from `output/scoring_report.csv` and saves them into `output/figures/`.
+### `migrate_output_layout.py`
 
-This is for post-processing benchmark results, not for generation or scoring.
+Migration utility for older output layouts.
+
+Use this when older benchmark outputs need to be moved into the current directory layout expected by `src.core.output_layout` and the scoring pipeline.
 
 ### `aggregate_metrics.py`
 
-Aggregates runtime and token usage from `output/*/*/*/metrics.json` into a single CSV report.
+Aggregates `metrics.json` files across benchmark runs.
 
-This is useful when comparing runner cost and latency, especially across `simple`, `cot`, and `agentic` runs.
+Current grouping is by:
 
-## Core Architecture
+- model
+- runner
+- notebook order
 
-### Notebook ingestion
+It computes mean time and token usage and writes `output/metrics_report_aggregated.csv` unless overridden.
 
-`src/core/notebook_parser.py`
+### `visualize.py`
 
-- Recursively finds `.ipynb` files under `data/`
-- Converts notebook JSON into a flattened text representation
-- Preserves code and markdown cell boundaries using markers like `--- CODE CELL ---`
+Builds thesis-style figures from `output/scoring_report.csv` and saves them into `output/figures/`.
 
-This flattened notebook text is what the runners send to the model.
+This is a reporting layer over the scoring outputs, not part of generation or scoring itself.
 
-### Prompt and DSPy configuration
+## Control Path To Check First
 
-`src/core/dspy_config.py`
+When debugging or extending the benchmark, inspect code in this order:
 
-- Defines the default DSPy signature used for code generation
-- Expects three output fields: `train`, `inference`, `requirements`
-- Allows the active prompt text to be swapped dynamically with `set_prompt()`
+1. `benchmark.py`
+2. `src/core/output_layout.py`
+3. the selected runner in `src/runners/`
+4. the generated run directory under `output/`
+5. `src/scoring/pipeline.py`
+6. `src/scoring/utils.py`
+7. the matching notebook strategy in `src/inference/notebooks.py`
 
-Complexity-specific prompts come from `configs/prompt.yml` and are injected at runtime by `benchmark.py`.
+That path mirrors the actual control flow used by generation and scoring.
 
-### File generation and output persistence
+## Notebook Parsing
 
-`src/core/file_io.py`
+### `src/core/notebook_parser.py`
 
-- Cleans model output
-- Extracts file contents from DSPy or fallback responses
-- Writes generated files into the benchmark output tree
-- Saves optional `history.json`
-- Saves `metrics.json` with time and usage data when available
-- Copies the notebook-specific `data/<nb>/input` directory into the generated run directory
+This module owns notebook loading and text flattening.
 
-The canonical output layout is:
+It:
+
+- recursively finds `.ipynb` files under `data/`
+- renders each notebook into a flat text stream
+- preserves cell boundaries using `--- CODE CELL ---` and `--- MARKDOWN CELL ---`
+- supports deterministic adjacent swaps via `order_mode="adjacent-swap"`
+
+Important detail:
+
+- the adjacent swap pattern is deterministic per notebook and cell-pair index
+- `run_id` is currently accepted by the API but does not affect the swap pattern
+
+If a generation issue depends on notebook content order, this file is the first place to inspect.
+
+## Prompting And Model IO
+
+### `src/core/dspy_config.py`
+
+Defines the DSPy signature used for code generation.
+
+The benchmark expects three output fields:
+
+- `train`
+- `inference`
+- `requirements`
+
+`benchmark.py` loads the selected prompt from `configs/prompt.yml` and injects it at runtime.
+
+### `src/core/file_io.py`
+
+Owns model-response cleanup and persistence.
+
+It:
+
+- sanitizes raw model output
+- extracts file contents from DSPy fields or fallback text output
+- writes `train.py`, `inference.py`, and `requirements.txt`
+- writes `history.json` when history is available and saving is enabled
+- writes `metrics.json` when runtime and usage data are available
+- copies `data/<nb>/input` into the generated run directory
+
+This module is the key place to inspect when models return malformed JSON, fenced code blocks, or incomplete field content.
+
+## Output Layout
+
+### `src/core/output_layout.py`
+
+This file defines the canonical run directory layout.
+
+Current canonical path:
 
 ```text
 output/
-  nbX/
+  <nb>/
     <runner>/
       <complexity>/
-        <run>/
-          <model>/
-            train.py
-            inference.py
-            requirements.txt
-            metrics.json
-            history.json
-            input/
+        <notebook_order>/
+          <run>/
+            <model>/
+              train.py
+              inference.py
+              requirements.txt
+              metrics.json
+              history.json
+              input/
 ```
+
+Important details:
+
+- `build_run_dir()` always includes `notebook_order`
+- `parse_run_dir()` still accepts legacy paths without `notebook_order` and treats them as `original`
+- `iter_run_dirs()` supports both the current and legacy layouts so scoring and aggregation remain backward-compatible
+
+Do not change this layout casually. The scoring and reporting pipeline keys on this metadata.
 
 ## Runner System
 
-The runner registry lives in `src/runners/__init__.py`.
+### `src/runners/__init__.py`
+
+Runner registration currently includes:
+
+- `simple`
+- `cot`
+- `agentic`
 
 All runners implement `BaseRunner.run(...)` from `src/runners/base.py`.
 
@@ -110,129 +186,123 @@ All runners implement `BaseRunner.run(...)` from `src/runners/base.py`.
 
 Implemented by `src/runners/llm_runner.py::LLMRunner`.
 
-- Uses `dspy.Predict`
-- Single-pass structured generation
-- Writes outputs through `generate_files_from_answer()`
+- uses `dspy.Predict`
+- performs a single structured generation pass
+- writes outputs through `generate_files_from_answer()`
 
 ### `cot` runner
 
 Implemented by `src/runners/llm_runner.py::CoTRunner`.
 
-- Uses `dspy.ChainOfThought`
-- Same persistence path as the simple runner
+- uses `dspy.ChainOfThought`
+- shares the same persistence path as `simple`
 
 ### `agentic` runner
 
 Implemented by `src/runners/openhands_runner.py::OpenHandsRunner`.
 
-- Uses the OpenHands SDK
-- Creates a temporary local workspace
-- Writes the notebook content into that workspace
-- Instructs the agent to create `train.py`, `inference.py`, and `requirements.txt`
-- Falls back to extracting code from conversation history if files are missing on disk
+- uses the OpenHands SDK with terminal, file editor, and task tracker tools
+- creates a temporary workspace
+- writes notebook content into that workspace as `notebook.ipynb` and `notebook.md`
+- instructs the agent to create `train.py`, `inference.py`, and `requirements.txt`
+- falls back to extracting code blocks from conversation history if files are missing on disk
 
-When changing or adding runners, keep the output folder convention stable because the scoring pipeline depends on it.
+### Structured-output fallback
+
+`src/runners/llm_runner.py` also contains a text-response fallback path for OpenAI-compatible endpoints that reject the default DSPy structured response format.
+
+If generation fails with response-format errors, inspect this fallback before changing prompts or scoring.
 
 ## Scoring System
 
-### Main pipeline
+### `src/scoring/pipeline.py`
 
-`src/scoring/pipeline.py`
+This is the central scoring pipeline.
 
-This is the central evaluator for generated runs.
+For each discovered model run directory, it:
 
-For each generated run directory, it:
+1. parses notebook ID, runner, model, complexity, notebook order, and run number from the output path
+2. compares generated requirements against `data/<nb>/requirements.txt`
+3. checks syntax and complexity for `train.py` and `inference.py`
+4. executes `train.py` in a subprocess from the generated run directory
+5. compares produced artifacts against `data/<nb>/output`
+6. runs inference checks only if training succeeded
+7. appends new rows to `output/scoring_report.csv`
+8. regenerates `output/scoring_report_aggregated.csv`
 
-1. Parses notebook ID, runner, model, complexity, and run number from the output path
-2. Compares generated requirements against the notebook's reference `requirements.txt`
-3. Checks syntax and complexity for `train.py` and `inference.py`
-4. Executes `train.py` in a subprocess from the run directory
-5. Compares produced artifacts with the notebook's reference output artifacts
-6. Runs two inference checks when training succeeded:
-   - benchmark-owned inference over the generated artifacts
-   - generated `inference.py` imported dynamically and called via `inference(prompt)`
-7. Writes detailed and aggregated CSV reports
+Important implemented behavior:
 
-### Low-level scoring helpers
+- exact runs are de-duplicated by the key `(notebook_id, runner, model, complexity, notebook_order, run)`
+- inference scoring is skipped when training failed
+- aggregated reporting groups by `(model, runner, complexity, notebook_order)`
+- legacy rows without `notebook_order` are normalized to `original` when loaded
 
-`src/scoring/utils.py`
+### `src/scoring/evaluator.py`
 
-- `check_syntax()` parses Python with `ast`
-- `run_dynamic_analysis()` runs `train.py` via `subprocess.run()` with a 10-minute timeout
-- `compare_requirements()` scores dependency overlap
-- `get_inference_strategy()` resolves the per-notebook inference harness
-- `test_generated_inference()` imports generated `inference.py` dynamically and runs it
-- `test_own_inference()` validates generated artifacts with repo-owned inference logic
+Measures maintainability and cyclomatic complexity using `radon` and maps that into the benchmark's numeric complexity score.
 
-### Complexity scoring
+### `src/scoring/utils.py`
 
-`src/scoring/evaluator.py`
+Contains the low-level helpers used by the pipeline, including:
 
-- Uses `radon` maintainability and cyclomatic complexity metrics
-- Maps the result to an integer score from 1 to 5
+- syntax parsing
+- subprocess execution of `train.py`
+- requirement comparison
+- artifact comparison
+- repo-owned inference evaluation
+- dynamic import and execution of generated `inference.py`
 
-## Inference Test Harness
+If scoring fails for only one notebook or one artifact family, inspect this file together with the matching notebook strategy.
 
-The repo contains notebook-specific reference inference logic in `src/inference/`.
+## Inference Harness
 
-### Generic strategies
+### `src/inference/notebooks.py`
 
-`src/inference/strategies.py`
-
-Defines reusable base strategies for artifact-backed inference, including:
-
-- transformer-based models
-- CatBoost models
-- sentence-transformer models
-- custom helper classes used by some notebooks
-
-### Notebook-specific strategies
-
-`src/inference/notebooks.py`
-
-Maps each benchmark notebook to a concrete strategy class:
+Maps each benchmark notebook to its notebook-specific inference strategy:
 
 - `InferenceNb1` through `InferenceNb10`
 
-Some notebooks use the base strategy directly; others override prompt construction or model loading behavior.
+### `src/inference/strategies.py`
 
-If scoring for a notebook is failing, inspect its matching `InferenceNbX` implementation first.
+Provides reusable strategy implementations for different artifact families, including transformer-backed and classic-model patterns.
 
-## Config and Data
+If scoring succeeds on training but fails on inference, inspect the matching `InferenceNbX` implementation first.
+
+## Config And Data
 
 ### `configs/config.yml`
 
 Defines:
 
-- model/provider pairs
+- models and providers
 - API keys via environment variables
 - optional API base URLs
-- global settings like temperature and save-history
+- global settings such as temperature and default history saving
 
 ### `configs/prompt.yml`
 
-Maps complexity levels to prompt text. `benchmark.py` reads the selected complexity and injects that prompt into the runner input.
+Maps prompt complexity levels to prompt text consumed by `benchmark.py`.
 
 ### `configs/inference.yml`
 
-Present in the repo, but the current scoring path primarily resolves inference behavior from `src/inference/notebooks.py`.
+Present in the repository, but the current scoring path is driven primarily by `src/inference/notebooks.py`.
 
 ### `data/`
 
-Contains benchmark fixtures.
+Contains benchmark fixtures and ground truth.
 
 Each notebook directory generally contains:
 
 - the source notebook
 - a notebook-specific `requirements.txt`
 - input data under `input/`
-- sometimes reference output artifacts under `output/`
+- reference output artifacts under `output/` when artifact comparison is expected
 
-Do not change benchmark data casually. Scoring logic assumes these directories are the ground truth.
+Do not change `data/` casually. Scoring assumes it is the benchmark ground truth.
 
 ## Typical Commands
 
-Run generation for all configured models and notebooks:
+Run generation with default settings:
 
 ```bash
 python benchmark.py
@@ -244,69 +314,107 @@ Run a single model and notebook:
 python benchmark.py --model gemini-2.5-flash --notebook nb1
 ```
 
+Use a different runner and prompt complexity:
+
+```bash
+python benchmark.py --runner cot --complexity 5
+```
+
+Run multiple repetitions:
+
+```bash
+python benchmark.py --runs 3
+```
+
+Use deterministic adjacent cell swaps:
+
+```bash
+python benchmark.py --runs 3 --notebook-order adjacent-swap
+```
+
+Generate and then score:
+
+```bash
+python benchmark.py --score
+```
+
 Score existing outputs only:
 
 ```bash
 python benchmark.py --score-only
 ```
 
-Generate then score:
+Preview output-layout migration:
 
 ```bash
-python benchmark.py --score
+python migrate_output_layout.py --dry-run
 ```
 
-Generate thesis figures:
-
-```bash
-python visualize.py --format png
-```
-
-Aggregate timing and token metrics:
+Aggregate metrics:
 
 ```bash
 python aggregate_metrics.py
 ```
 
-## Development Notes For Agents
+Generate figures:
 
-### When making changes
+```bash
+python visualize.py --format png
+```
 
-- Prefer small, local edits over broad refactors
-- Preserve output folder naming: `<complexity>/<run>/<model>` under each `output/<nb>/<runner>/`
-- Preserve the expected generated filenames: `train.py`, `inference.py`, `requirements.txt`
-- Keep scoring behavior backward-compatible with existing `output/` contents when possible
-- Treat `data/` as benchmark ground truth, not a casual workspace
+## Development Guidance For Agents
 
-### Safe extension points
+When making changes:
 
-- Add a new runner by implementing `BaseRunner` and registering it in `src/runners/__init__.py`
-- Add a new benchmark notebook by placing it under `data/nbX` and creating a matching `InferenceNbX` strategy if inference scoring needs custom logic
-- Adjust evaluation logic in `src/scoring/pipeline.py` and `src/scoring/utils.py`
-- Adjust prompt behavior through `configs/prompt.yml` or `src/core/dspy_config.py`
+- prefer small, local edits over broad refactors
+- preserve the generated filenames `train.py`, `inference.py`, and `requirements.txt`
+- preserve the canonical output layout `output/<nb>/<runner>/<complexity>/<notebook_order>/<run>/<model>/`
+- keep scoring behavior backward-compatible with legacy output layouts when possible
+- treat `data/` as benchmark ground truth, not a scratch area
+- fix bugs at the controlling layer first: parser, runner, file extraction, output layout, scoring, then reporting
 
-### Places where bugs are likely to surface
+Safe extension points:
 
-- Parsing model output into valid `train.py` / `inference.py` / `requirements.txt`
-- Endpoint incompatibilities around structured JSON responses in DSPy and LiteLLM
-- Output directory naming mismatches that prevent the scoring pipeline from discovering runs
-- Notebook-specific artifact loading in `src/inference/notebooks.py`
-- Relative-path assumptions inside generated scripts executed from the run directory
+- add a new runner by implementing `BaseRunner` and registering it in `src/runners/__init__.py`
+- add new prompt variants through `configs/prompt.yml`
+- adjust file extraction behavior in `src/core/file_io.py`
+- extend scoring in `src/scoring/pipeline.py` and `src/scoring/utils.py`
+- add or refine notebook-specific inference logic in `src/inference/notebooks.py`
+
+Common failure surfaces:
+
+- malformed or partially structured model responses
+- endpoint incompatibilities around JSON response formatting
+- output-path mismatches that prevent scoring discovery
+- missing copied `input/` data in generated run directories
+- notebook-specific model loading or prompt formatting in inference strategies
+- generated scripts assuming the wrong working directory at runtime
 
 ## Runtime Environment
 
-- Python version is pinned to `>=3.12,<3.13` in `pyproject.toml`
-- Dependencies are managed in `pyproject.toml` via Poetry metadata
-- The project uses DSPy, LiteLLM-compatible providers, OpenHands, pandas, seaborn, matplotlib, radon, transformers, and several ML libraries used by the benchmark notebooks
+- Python is pinned to `>=3.12,<3.13` in `pyproject.toml`
+- dependency management is defined through Poetry metadata in `pyproject.toml`
+- the repository uses DSPy, LiteLLM-compatible providers, OpenHands, pandas, matplotlib, seaborn, radon, transformers, and notebook-specific ML dependencies
 
-## Practical Orientation
+## Practical Rule Of Thumb
 
-If you need to understand a failure quickly, inspect in this order:
+If a task is about generation quality, start with:
 
-1. `benchmark.py` for orchestration and selected arguments
-2. the chosen runner implementation in `src/runners/`
-3. the generated run directory under `output/nbX/<runner>/...`
-4. `src/scoring/pipeline.py` and `src/scoring/utils.py`
-5. the matching `InferenceNbX` strategy in `src/inference/notebooks.py`
+1. `benchmark.py`
+2. the selected runner
+3. `src/core/file_io.py`
+4. the generated run directory
 
-That path mirrors the actual control flow of the repository.
+If a task is about scoring correctness, start with:
+
+1. `src/scoring/pipeline.py`
+2. `src/scoring/utils.py`
+3. `src/inference/notebooks.py`
+4. the matching `data/<nb>/output`
+
+If a task is about reports or summaries, start with:
+
+1. `output/scoring_report.csv`
+2. `output/scoring_report_aggregated.csv`
+3. `aggregate_metrics.py`
+4. `visualize.py`

@@ -12,8 +12,8 @@ from src.core.output_layout import parse_run_dir
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description=(
-            "Aggregate mean time_taken and token usage per model-runner combination "
-            "from output/**/**/**/**/metrics.json files."
+            "Aggregate mean time_taken and token usage per model-runner-order combination "
+            "from output/**/**/**/**/**/metrics.json files."
         )
     )
     parser.add_argument(
@@ -84,7 +84,12 @@ def file_token_totals(usage: Dict) -> Dict[str, int]:
 
 
 def aggregate(output_dir: Path):
-    metrics_files = sorted(output_dir.glob("*/*/*/*/*/metrics.json"))
+    metrics_files = sorted(
+        {
+            *output_dir.glob("*/*/*/*/*/*/metrics.json"),
+            *output_dir.glob("*/*/*/*/*/metrics.json"),
+        }
+    )
     grouped = defaultdict(
         lambda: {
             "count": 0,
@@ -99,11 +104,6 @@ def aggregate(output_dir: Path):
 
     for metrics_path in metrics_files:
         try:
-            rel = metrics_path.relative_to(output_dir)
-            if len(rel.parts) < 6:
-                skipped += 1
-                continue
-
             model_dir = metrics_path.parent
             meta = parse_run_dir(model_dir, output_dir)
             if meta is None:
@@ -112,6 +112,7 @@ def aggregate(output_dir: Path):
 
             model = meta["model"]
             runner = meta["runner"]
+            notebook_order = meta.get("notebook_order", "original")
 
             with metrics_path.open("r", encoding="utf-8") as f:
                 payload = json.load(f)
@@ -120,7 +121,7 @@ def aggregate(output_dir: Path):
             usage = payload.get("usage") or {}
             token_totals = file_token_totals(usage)
 
-            key = (model, runner)
+            key = (model, runner, notebook_order)
             grouped[key]["count"] += 1
             grouped[key]["time_taken_sum"] += time_taken
             grouped[key]["prompt_tokens_sum"] += token_totals["prompt_tokens"]
@@ -130,12 +131,13 @@ def aggregate(output_dir: Path):
             skipped += 1
 
     rows = []
-    for (model, runner), stats in sorted(grouped.items()):
+    for (model, runner, notebook_order), stats in sorted(grouped.items()):
         count = stats["count"]
         rows.append(
             {
                 "model": model,
                 "runner": runner,
+                "notebook_order": notebook_order,
                 "samples": count,
                 "mean_time_taken": stats["time_taken_sum"] / count if count else 0.0,
                 "mean_prompt_tokens": stats["prompt_tokens_sum"] / count if count else 0.0,
@@ -152,6 +154,7 @@ def save_csv(rows, save_path: Path) -> None:
     fieldnames = [
         "model",
         "runner",
+        "notebook_order",
         "samples",
         "mean_time_taken",
         "mean_prompt_tokens",

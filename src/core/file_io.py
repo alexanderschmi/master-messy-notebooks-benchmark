@@ -81,7 +81,17 @@ def extract_file_content(field_content, filename, history_dict=None):
     return sanitize_json_output(field_content)
 
 
-def generate_files_from_answer(answer, output_dir: str, model: str, complexity: int, time_taken: float = 0.0, usage=None, runner: str = "simple", run: int = 1):
+def generate_files_from_answer(
+    answer,
+    output_dir: str,
+    model: str,
+    complexity: int,
+    time_taken: float = 0.0,
+    usage=None,
+    runner: str = "simple",
+    run: int = 1,
+    notebook_order: str = "original",
+):
     """Generates files from answers."""
     os.makedirs(output_dir, exist_ok=True)
     nb_id, answer, history_tuple = answer
@@ -89,7 +99,7 @@ def generate_files_from_answer(answer, output_dir: str, model: str, complexity: 
     if type(answer) is str:
         logger.error(f"Error: {answer}")
         return
-    base_path = build_run_dir(output_dir, nb_id, runner, complexity, run, model)
+    base_path = build_run_dir(output_dir, nb_id, runner, complexity, run, model, notebook_order=notebook_order)
     base_path.mkdir(parents=True, exist_ok=True)
         
     if history_tuple is not None:

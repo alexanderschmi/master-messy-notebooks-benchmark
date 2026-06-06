@@ -43,8 +43,10 @@ poetry install --with agentic
 
 ```bash
 export GEMINI_API_KEY="your-key"
-export CHATAI_API_KEY="your-key"   # For OpenAI-compatible endpoints
+export CHATAI_API_KEY="your-key"   # For OpenAI-compatible endpoints (Academic Cloud, etc.)
 ```
+
+The benchmark currently tests against models available through the Gemini API and the GWDG Academic Cloud OpenAI-compatible endpoint.
 
 ---
 
@@ -63,6 +65,9 @@ python benchmark.py --complexity 5 --runner cot
 # Multiple runs per model/notebook pair
 python benchmark.py --runs 3
 
+# Deterministically swap some adjacent notebook cells with the same pattern across runs
+python benchmark.py --runs 3 --notebook-order adjacent-swap
+
 # Generate and then score
 python benchmark.py --score
 
@@ -71,6 +76,30 @@ python benchmark.py --score-only
 
 # Save LLM prompt/response history to history.json
 python benchmark.py --save-history
+<<<<<<< Updated upstream
+=======
+
+# Preview migration from legacy output folders to the new layout
+python migrate_output_layout.py --dry-run
+
+# Apply the migration
+python migrate_output_layout.py
+
+# Aggregate timing and token usage metrics
+python aggregate_metrics.py
+
+# Evaluate real ML performance of generated model artifacts
+python evaluate_model_performance.py
+
+# Compare generated-artifact inference outputs against real notebook artifacts
+python compare_own_inference_vs_real.py
+
+# Retry failed inference-scoring rows
+python rerun_failed_inference.py
+
+# Generate thesis-quality figures from scoring data
+python visualize.py --format png
+>>>>>>> Stashed changes
 ```
 
 ### CLI Arguments
@@ -79,6 +108,7 @@ python benchmark.py --save-history
 |---|---|---|
 | `--runs` | `1` | Number of repetitions per model/notebook pair |
 | `--complexity` | `4` | Prompt complexity level (1–5) |
+| `--notebook-order` | `original` | Notebook load mode: `original` or deterministic `adjacent-swap` fixed across runs |
 | `--config` | `configs/config.yml` | Path to models config file |
 | `--model` | all models | Filter to a single model by name |
 | `--notebook` | all notebooks | Filter to a single notebook (e.g. `nb1`) |
@@ -87,6 +117,55 @@ python benchmark.py --save-history
 | `--score-only` | off | Skip generation, run scoring only |
 | `--save-history` | off | Save LLM prompt/response history as `history.json` |
 
+<<<<<<< Updated upstream
+=======
+### Adjacent-Swap Notebook Order
+
+The `--notebook-order adjacent-swap` flag deterministically reorders notebook cells before sending them to the LLM. This tests whether models can reconstruct correct code even when logically dependent cells appear out of order.
+
+**How it works:**
+
+- Cells are walked in pairs. For each pair at index `i`, the benchmark computes `SHA256("{nb_id}:{i}")` and swaps the pair if the first byte mod 3 equals 0 (~33% of pairs).
+- Swapped pairs are skipped (index advances by 2), so a cell is involved in at most one swap.
+- The swap pattern is deterministic per notebook — the same cells are swapped every run (the `run_id` is not part of the seed).
+
+**Concrete swap counts per notebook:**
+
+| Notebook | Total Cells | Swapped Pairs | Swapped Cell Indices |
+|----------|-------------|---------------|----------------------|
+| nb1 | 17 | 3 | (7,8), (10,11), (12,13) |
+| nb2 | 32 | 9 | (1,2), (5,6), (7,8), (10,11), (12,13), (17,18), (19,20), (24,25), (29,30) |
+| nb3 | 30 | 7 | (8,9), (10,11), (13,14), (15,16), (20,21), (26,27), (28,29) |
+| nb4 | 9 | 3 | (0,1), (4,5), (6,7) |
+| nb5 | 9 | 2 | (0,1), (4,5) |
+| nb6 | 18 | 5 | (5,6), (9,10), (11,12), (13,14), (16,17) |
+| nb7 | 23 | 7 | (1,2), (3,4), (5,6), (11,12), (14,15), (18,19), (20,21) |
+| nb8 | 22 | 5 | (1,2), (4,5), (7,8), (11,12), (19,20) |
+| nb9 | 25 | 4 | (1,2), (3,4), (5,6), (10,11) |
+| nb10 | 43 | 7 | (1,2), (4,5), (12,13), (19,20), (27,28), (31,32), (34,35) |
+
+The implementation lives in [`src/core/notebook_parser.py`](src/core/notebook_parser.py).
+
+---
+
+### Migrating Existing Outputs
+
+If you already have benchmark runs stored in the legacy layout
+`output/<nb>/<runner>/<model>_complexity_<N>_run_<R>`, migrate them to the
+current layout `output/<nb>/<runner>/<complexity>/<notebook_order>/<run>/<model>` with:
+
+```bash
+# inspect planned moves
+python migrate_output_layout.py --dry-run
+
+# perform the move
+python migrate_output_layout.py
+```
+
+By default, the migration stops on conflicts. You can also use
+`--on-conflict skip` or `--on-conflict overwrite`.
+
+>>>>>>> Stashed changes
 ---
 
 ## Runners
@@ -131,11 +210,14 @@ models:
   - provider: gemini
     model: gemini-2.5-flash
     api_key: ${GEMINI_API_KEY}
+    api_base: "https://generativelanguage.googleapis.com/v1beta"
   - provider: openai
-    model: gpt-4o
-    api_key: ${OPENAI_API_KEY}
-    api_base: "https://api.openai.com/v1"  # optional
+    model: devstral-2-123b-instruct-2512
+    api_key: ${CHATAI_API_KEY}
+    api_base: "https://chat-ai.academiccloud.de/v1"
 ```
+
+Models use the OpenAI-compatible provider format. Set `api_base` to point at any compatible endpoint (OpenRouter, Academic Cloud, local LM Studio, etc.).
 
 ### `configs/prompt.yml`
 
@@ -162,7 +244,16 @@ Scoring is run with `--score` or `--score-only` and produces two CSV files in `o
 | `outputs_match` | Whether inference outputs match expected results |
 | `requirements_match_score` | Overlap between generated and original requirements |
 
-**`scoring_report_aggregated.csv`** — mean `train_execution_success` and `own_inference_success` per model / runner / complexity, sorted by those two columns.
+**`scoring_report_aggregated.csv`** — mean `train_execution_success` and `own_inference_success` per model / runner / complexity / notebook_order, sorted by those two columns.
+
+### Additional Reports
+
+| Script | Output File(s) | Purpose |
+|--------|---------------|----------|
+| `aggregate_metrics.py` | `metrics_report_aggregated.csv` | Mean time and token usage per model/runner/order |
+| `evaluate_model_performance.py` | `model_performance.csv`, `model_performance_summary.csv` | Real ML metrics (accuracy, F1, RMSE) of generated artifacts |
+| `compare_own_inference_vs_real.py` | `own_inference_vs_real_artifacts.csv`, `own_inference_vs_real_artifacts_summary.csv` | Continuous similarity (0–1) between generated and reference inference outputs |
+| `visualize.py` | `output/figures/*.png` | Publication-quality charts for thesis figures |
 
 ---
 
@@ -173,19 +264,33 @@ output/
 ├── nb1/
 │   ├── simple/
 │   │   └── 4/
-│   │       └── 1/
-│   │           └── gemini-2.5-flash/
-│   │               ├── train.py
-│   │               ├── inference.py
-│   │               ├── requirements.txt
-│   │               ├── history.json          # only with --save-history
-│   │               └── input/                # copy of the notebook's original dataset
+│   │       ├── original/
+│   │       │   └── 1/
+│   │       │       └── gemini-2.5-flash/
+│   │       │           ├── train.py
+│   │       │           ├── inference.py
+│   │       │           ├── requirements.txt
+│   │       │           ├── metrics.json       # timing and token usage
+│   │       │           ├── history.json       # only with --save-history
+│   │       │           └── input/             # copy of the notebook's original dataset
+│   │       └── adjacent-swap/
+│   │           └── 1/
+│   │               └── gemini-2.5-flash/
+│   │                   └── …
 │   ├── cot/
 │   └── agentic/
 ├── nb2/ … nb10/
 ├── scoring_report.csv
-└── scoring_report_aggregated.csv
+├── scoring_report_aggregated.csv
+├── metrics_report_aggregated.csv
+├── model_performance.csv
+├── model_performance_summary.csv
+├── own_inference_vs_real_artifacts.csv
+├── own_inference_vs_real_artifacts_summary.csv
+└── figures/                                    # generated by visualize.py
 ```
+
+Layout path: `output/<nb>/<runner>/<complexity>/<notebook_order>/<run>/<model>/`
 
 ---
 
@@ -205,6 +310,7 @@ Post-processing scripts for reporting and visualization live in `scripts/`:
 ## Project Structure
 
 ```
+<<<<<<< Updated upstream
 benchmark.py              # Entry point and orchestration
 setup.py                  # Notebook pre-execution (generates reference outputs)
 configs/
@@ -220,4 +326,25 @@ src/
   inference/              # Inference testing helpers
 scripts/                  # Post-processing analysis and visualization
 output/                   # Generated code and scoring results (git-ignored)
+=======
+benchmark.py                    # Entry point and orchestration
+aggregate_metrics.py            # Aggregate time/token metrics from metrics.json files
+evaluate_model_performance.py   # Run inference on generated artifacts and compute ML metrics
+compare_own_inference_vs_real.py # Compare generated-artifact inference vs real notebook artifacts
+rerun_failed_inference.py       # Retry failed inference-scoring rows
+visualize.py                    # Generate publication-quality figures from scoring reports
+migrate_output_layout.py        # Migrate legacy output folders to current layout
+configs/
+  config.yml                    # Models and settings
+  prompt.yml                    # Complexity-stratified prompts
+  inference.yml                 # Per-notebook inference hints
+data/
+  nb1/ … nb10/                  # Notebooks, input datasets, and reference artifacts
+src/
+  core/                         # Notebook parsing, DSPy config, file I/O, output layout, logging
+  runners/                      # BaseRunner, LLMRunner, CoTRunner, OpenHandsRunner
+  scoring/                      # Evaluator, pipeline, utilities
+  inference/                    # Inference testing helpers and notebook-specific strategies
+output/                         # Generated code, scoring results, and figures
+>>>>>>> Stashed changes
 ```

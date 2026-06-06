@@ -64,6 +64,10 @@ INFERENCE_REQUIRED_STEPS = [
     "own_inference_success",
     "llm_inference_success",
 ]
+NOTEBOOK_ORDER_LABELS = {
+    "original": "Original",
+    "adjacent-swap": "Adjacent Swap",
+}
 
 
 def apply_style():
@@ -130,6 +134,66 @@ def pipeline_step_complexity_column(pipeline_step: str) -> str:
     return "train_complexity_score" if pipeline_step in TRAIN_PIPELINE_STEPS else "inference_complexity_score"
 
 
+def natural_notebook_order(values) -> list[str]:
+    return sorted(values, key=lambda value: int("".join(filter(str.isdigit, str(value))) or 0))
+
+
+def ordered_notebook_orders(values) -> list[str]:
+    preferred = ["original", "adjacent-swap"]
+    available = list(dict.fromkeys(values))
+    ordered = [value for value in preferred if value in available]
+    ordered.extend(sorted(value for value in available if value not in preferred))
+    return ordered
+
+
+def notebook_order_label(order: str) -> str:
+    return NOTEBOOK_ORDER_LABELS.get(order, order)
+
+
+def filter_simple_complexity(df: pd.DataFrame, complexity: int = 4) -> pd.DataFrame:
+    return df[(df["runner"] == "simple") & (df["complexity"] == complexity) & (df["notebook_order"] == "original")].copy()
+
+
+def models_with_all_complexities(df: pd.DataFrame) -> list[str]:
+    if "complexity" not in df.columns or df["complexity"].nunique() < 2:
+        return []
+
+    all_complexities = set(df["complexity"].unique())
+    complete_models = (
+        df.groupby("model")["complexity"]
+        .apply(lambda series: all_complexities.issubset(set(series)))
+    )
+    return sorted(complete_models[complete_models].index.tolist())
+
+
+def filter_models_with_all_complexities(df: pd.DataFrame) -> pd.DataFrame:
+    complete_models = models_with_all_complexities(df)
+    if not complete_models:
+        return df.iloc[0:0].copy()
+    return df[df["model"].isin(complete_models)].copy()
+
+
+def ordered_runners(df: pd.DataFrame) -> list[str]:
+    return sorted(df["runner"].unique(), key=lambda runner: RUNNER_ORDER.index(runner) if runner in RUNNER_ORDER else 99)
+
+
+def drop_models_with_all_nan_inference_scores(df: pd.DataFrame) -> pd.DataFrame:
+    if "model" not in df.columns or "inference_score" not in df.columns:
+        return df
+
+    valid_models = (
+        df.groupby("model")["inference_score"]
+        .apply(lambda series: series.notna().any())
+    )
+    valid_models = valid_models[valid_models].index.tolist()
+    if len(valid_models) == df["model"].nunique():
+        return df
+
+    dropped_models = sorted(set(df["model"].unique()) - set(valid_models))
+    logger.info(f"Dropping {len(dropped_models)} models with all-NaN inference scores: {', '.join(dropped_models)}")
+    return df[df["model"].isin(valid_models)].copy()
+
+
 def prepare_success_rate_metrics(df: pd.DataFrame) -> pd.DataFrame:
     """Replace train/inference score columns with strict all-steps success rates.
 
@@ -148,7 +212,7 @@ def prepare_success_rate_metrics(df: pd.DataFrame) -> pd.DataFrame:
         # Conditional: set to NaN on rows where training failed so that
         # groupby().mean() computes P(inference | train succeeded); 0 otherwise
         cond_mask = df["train_score"] > 0 if "train_score" in df.columns else pd.Series(True, index=df.index)
-        df["inference_score"] = (inference_success.astype(float) * 100).where(cond_mask, other=0.0)
+        df["inference_score"] = (inference_success.astype(float) * 100).where(cond_mask, other=np.nan)
 
     return df
 
@@ -165,7 +229,7 @@ def plot_leaderboard(
     pipeline_step: str | None = None,
 ):
     """Ranked horizontal bar chart of overall model performance (simple runner only)."""
-    df_simple = df[(df["runner"] == "simple") & (df["complexity"] == 4)]
+    df_simple = filter_simple_complexity(df, complexity=4)
     if df_simple.empty:
         logger.warning("Skipping leaderboard — no rows for simple runner / complexity 4.")
         return
@@ -302,16 +366,12 @@ def plot_complexity_effect(
         logger.warning("Skipping complexity plot — not enough complexity levels in data.")
         return
 
-    all_complexities = set(df["complexity"].unique())
-    complete_models = (
-        df.groupby("model")["complexity"]
-        .apply(lambda s: all_complexities.issubset(set(s)))
-    )
-    complete_models = complete_models[complete_models].index.tolist()
+    all_complexities = sorted(df["complexity"].unique())
+    complete_models = models_with_all_complexities(df)
     if not complete_models:
         logger.warning("Skipping complexity plot — no model was run on all complexity levels.")
         return
-    df_filtered = df[df["model"].isin(complete_models)]
+    df_filtered = filter_models_with_all_complexities(df)
     logger.info(f"Complexity effect: {len(complete_models)} models with all {sorted(all_complexities)} complexities")
 
     agg_mean = (
@@ -415,16 +475,11 @@ def plot_complexity_per_model(
         logger.warning("Skipping per-model complexity plot — not enough complexity levels.")
         return
 
-    all_complexities = set(df["complexity"].unique())
-    complete_models = (
-        df.groupby("model")["complexity"]
-        .apply(lambda s: all_complexities.issubset(set(s)))
-    )
-    complete_models = complete_models[complete_models].index.tolist()
+    complete_models = models_with_all_complexities(df)
     if not complete_models:
         logger.warning("Skipping per-model complexity plot — no model was run on all complexity levels.")
         return
-    df = df[df["model"].isin(complete_models)]
+    df = filter_models_with_all_complexities(df)
 
     models = sorted(df["model"].unique())
     n = len(models)
@@ -496,19 +551,15 @@ def plot_complexity_scores_first5(
             logger.warning("Skipping complexity-score plot — not enough complexity levels.")
             return
 
-        all_complexities = set(df["complexity"].unique())
-        complete_models = (
-            df.groupby("model")["complexity"]
-            .apply(lambda s: all_complexities.issubset(set(s)))
-        )
-        complete_models = sorted(complete_models[complete_models].index.tolist())
+        complete_models = models_with_all_complexities(df)
         if not complete_models:
             logger.warning("Skipping complexity-score plot — no model was run on all complexity levels.")
             return
 
+        complete_df = filter_models_with_all_complexities(df)
         plot_df = (
-            df[df["model"].isin(complete_models)]
-            .assign(_success=pipeline_step_values(df[df["model"].isin(complete_models)], pipeline_step))
+            complete_df
+            .assign(_success=pipeline_step_values(complete_df, pipeline_step))
             .groupby(["model", "complexity"])[[complexity_col, "_success"]]
             .mean()
             .reset_index()
@@ -561,17 +612,12 @@ def plot_complexity_scores_first5(
         logger.warning("Skipping complexity-score plot — not enough complexity levels.")
         return
 
-    all_complexities = set(df["complexity"].unique())
-    complete_models = (
-        df.groupby("model")["complexity"]
-        .apply(lambda s: all_complexities.issubset(set(s)))
-    )
-    complete_models = sorted(complete_models[complete_models].index.tolist())
+    complete_models = models_with_all_complexities(df)
     if not complete_models:
         logger.warning("Skipping complexity-score plot — no model was run on all complexity levels.")
         return
 
-    sub_df = df[df["model"].isin(complete_models)].copy()
+    sub_df = filter_models_with_all_complexities(df)
     plot_df = (
         sub_df.groupby(["model", "complexity"])[
             [
@@ -738,7 +784,7 @@ def plot_notebook_heatmap(
     pipeline_step: str | None = None,
 ):
     """Heatmap: rows = models, columns = notebook IDs, value = mean train success rate (simple runner, complexity 4)."""
-    df_filtered = df[(df["runner"] == "simple") & (df["complexity"] == 4)]
+    df_filtered = filter_simple_complexity(df, complexity=4)
     if df_filtered.empty:
         logger.warning("Skipping notebook heatmap — no rows for simple runner / complexity 4.")
         return
@@ -751,7 +797,7 @@ def plot_notebook_heatmap(
     # Sort rows by mean score
     pivot = pivot.loc[pivot.mean(axis=1).sort_values(ascending=False).index]
     # Sort columns naturally (nb1, nb2, …)
-    cols = sorted(pivot.columns, key=lambda c: int("".join(filter(str.isdigit, c)) or 0))
+    cols = natural_notebook_order(pivot.columns)
     pivot = pivot[cols]
 
     fig, ax = plt.subplots(figsize=(max(8, 0.8 * len(cols)), max(4, 0.45 * len(pivot))))
@@ -1081,7 +1127,7 @@ def plot_notebook_score_breakdown(
         agg_mean = success_df.groupby("notebook_id")["_success"].mean()
         agg_std = success_df.groupby("notebook_id")["_success"].std().fillna(0)
 
-        nb_order = sorted(agg_mean.index, key=lambda c: int("".join(filter(str.isdigit, c)) or 0))
+        nb_order = natural_notebook_order(agg_mean.index)
         means = agg_mean.loc[nb_order].values
         stds = agg_std.loc[nb_order].values
         x = np.arange(len(nb_order))
@@ -1113,14 +1159,19 @@ def plot_notebook_score_breakdown(
         plt.close(fig)
         return
 
-    metrics = ["train_score", "inference_score"]
-    labels  = ["Train Success", "Inference Success"]
+    df = filter_simple_complexity(df, complexity=4)
+
+    metrics = ["train_score", "inference_score", "requirements_match_score"]
+    labels  = ["Train Success", "Inference Success", "Requirements Match"]
 
     agg_mean = df.groupby("notebook_id")[metrics].mean()
     agg_std  = df.groupby("notebook_id")[metrics].std().fillna(0)
 
+    agg_mean["requirements_match_score"] = agg_mean["requirements_match_score"].mul(100)
+    agg_std["requirements_match_score"] = agg_std["requirements_match_score"].mul(100)
+
     # Sort notebooks naturally (nb1, nb2, …)
-    nb_order = sorted(agg_mean.index, key=lambda c: int("".join(filter(str.isdigit, c)) or 0))
+    nb_order = natural_notebook_order(agg_mean.index)
     agg_mean = agg_mean.loc[nb_order]
     agg_std  = agg_std.loc[nb_order]
 
@@ -1145,13 +1196,13 @@ def plot_notebook_score_breakdown(
         )
 
     tick_labels = [
-        f"{nb}\n(σ={np.mean([agg_std.loc[nb, m] for m in metrics]):.1f})"
+        f"{nb}"
         for nb in nb_order
     ]
     ax.set_xticks(x)
     ax.set_xticklabels(tick_labels, rotation=0)
-    ax.set_xlabel("Notebook  (σ = avg std dev across metrics)")
-    ax.set_ylabel("Rate (%)")
+    ax.set_xlabel("Notebook")
+    ax.set_ylabel("Mean Success Rate (%)")
     ax.set_title("Success Breakdown per Notebook")
     ax.set_ylim(0, 100)
     ax.legend(loc="upper right")
@@ -1167,6 +1218,155 @@ def plot_notebook_score_breakdown(
 # Figure 12 — Cross-runner model comparison (models run on all runners)
 # ---------------------------------------------------------------------------
 
+RUNNER_ORDER = ["simple", "cot", "agentic"]
+RUNNER_LABELS = {"simple": "Simple", "cot": "Chain-of-Thought", "agentic": "Agentic"}
+
+
+def _plot_cross_runner_single(
+    df: pd.DataFrame,
+    figures_dir: Path,
+    fmt: str,
+    show: bool,
+    score_col: str,
+    score_label: str,
+    fig_stem: str,
+):
+    """Helper: cross-runner comparison figure for a single score metric."""
+    runners_present = ordered_runners(df)
+
+    if len(runners_present) < 2:
+        logger.info(f"Skipping cross-runner comparison ({score_label}) — fewer than 2 runners in data.")
+        return
+
+    model_runner_counts = df.groupby("model")["runner"].nunique()
+    complete_models = model_runner_counts[model_runner_counts == len(runners_present)].index.tolist()
+
+    if not complete_models:
+        logger.warning(f"Skipping cross-runner comparison ({score_label}) — no model was run on all runners.")
+        return
+
+    sub = df[df["model"].isin(complete_models)].copy()
+    if "notebook_order" in sub.columns:
+        sub = sub[sub["notebook_order"] == "original"].copy()
+    sub["label"] = sub["model"].apply(short_name)
+
+    # ── Panel 1: grouped bar — mean score per model × runner ──
+    agg = (
+        sub.groupby(["model", "runner"])[score_col]
+        .agg(mean="mean", std="std")
+        .reset_index()
+    )
+    agg["std"] = agg["std"].fillna(0)
+    agg["label"] = agg["model"].apply(short_name)
+
+    model_order = (
+        agg.groupby("label")["mean"]
+        .mean()
+        .sort_values(ascending=False)
+        .index.tolist()
+    )
+
+    x = np.arange(len(model_order))
+    width = 0.8 / len(runners_present)
+    runner_colors = {r: PALETTE[i] for i, r in enumerate(runners_present)}
+
+    fig, (ax_bar, ax_nb) = plt.subplots(
+        2, 1,
+        figsize=(max(10, 0.9 * len(model_order)), 10),
+        gridspec_kw={"height_ratios": [2, 1.4]},
+    )
+
+    for i, runner in enumerate(runners_present):
+        sub_r = agg[agg["runner"] == runner].set_index("label").reindex(model_order)
+        offset = (i - len(runners_present) / 2 + 0.5) * width
+        ax_bar.bar(
+            x + offset,
+            sub_r["mean"].fillna(0),
+            width,
+            yerr=sub_r["std"].fillna(0),
+            label=RUNNER_LABELS.get(runner, runner),
+            color=runner_colors[runner],
+            edgecolor="white",
+            capsize=3,
+            error_kw={"elinewidth": 1.2, "ecolor": "#444", "capthick": 1.2},
+        )
+
+    ax_bar.set_xticks(x)
+    ax_bar.set_xticklabels(model_order, rotation=30, ha="right")
+    ax_bar.set_ylabel(f"{score_label} (%)")
+    ax_bar.set_title(f"Cross-Runner Model Comparison — {score_label}")
+    ax_bar.set_ylim(0, 100)
+    ax_bar.legend(title="Runner", loc="upper right")
+
+    # ── Panel 2: per-notebook score — grouped bars per runner ─
+    nb_agg = (
+        sub.groupby(["runner", "notebook_id"])[score_col]
+        .mean()
+        .reset_index()
+    )
+    nb_order = natural_notebook_order(nb_agg["notebook_id"].unique())
+
+    x_nb = np.arange(len(nb_order))
+    nb_width = 0.8 / len(runners_present)
+
+    for i, runner in enumerate(runners_present):
+        sub_r = nb_agg[nb_agg["runner"] == runner].set_index("notebook_id").reindex(nb_order)
+        offset = (i - len(runners_present) / 2 + 0.5) * nb_width
+        ax_nb.bar(
+            x_nb + offset,
+            sub_r[score_col].fillna(0),
+            nb_width,
+            label=RUNNER_LABELS.get(runner, runner),
+            color=runner_colors[runner],
+            edgecolor="white",
+        )
+
+    ax_nb.set_xticks(x_nb)
+    ax_nb.set_xticklabels(nb_order, rotation=0)
+    ax_nb.set_xlabel("Notebook")
+    ax_nb.set_ylabel(f"{score_label} (%)")
+    ax_nb.set_title(f"Per-Notebook {score_label} by Runner")
+    ax_nb.set_ylim(0, 100)
+    ax_nb.legend(title="Runner", loc="upper right")
+    fig.tight_layout(h_pad=6.0)
+    save_fig(fig, figures_dir, fig_stem, fmt)
+    if show:
+        plt.show()
+    plt.close(fig)
+
+
+def plot_cross_runner_comparison(
+    df: pd.DataFrame,
+    figures_dir: Path,
+    fmt: str,
+    show: bool,
+    pipeline_step: str | None = None,
+):
+    """For each model that was evaluated on all available runners, compare their
+    train and inference success rates side-by-side as two separate figures."""
+    if pipeline_step is not None:
+        _plot_cross_runner_single(
+            df, figures_dir, fmt, show,
+            score_col=pipeline_step,
+            score_label=pipeline_step_label(pipeline_step),
+            fig_stem=f"12_cross_runner_comparison_{pipeline_step}",
+        )
+        return
+
+    _plot_cross_runner_single(
+        df, figures_dir, fmt, show,
+        score_col="train_score",
+        score_label="Train Success Rate",
+        fig_stem="12a_cross_runner_train_success",
+    )
+    _plot_cross_runner_single(
+        df, figures_dir, fmt, show,
+        score_col="inference_score",
+        score_label="Inference Success Rate",
+        fig_stem="12b_cross_runner_inference_success",
+    )
+
+
 # ---------------------------------------------------------------------------
 # Figure 13 — Per-notebook combined success rate (simple runner, complexity 4)
 # ---------------------------------------------------------------------------
@@ -1180,7 +1380,7 @@ def plot_notebook_scores_simple_c4(
 ):
     """Bar chart: combined success rate per notebook,
     filtered to simple runner at complexity 4, aggregated over all models & runs."""
-    sub = df[(df["runner"] == "simple") & (df["complexity"] == 4)].copy()
+    sub = filter_simple_complexity(df, complexity=4)
     if sub.empty:
         logger.warning("Skipping per-notebook simple/c4 plot — no matching rows.")
         return
@@ -1193,7 +1393,7 @@ def plot_notebook_scores_simple_c4(
     agg_mean = sub.groupby("notebook_id")["aggregated_score"].mean()
     agg_std  = sub.groupby("notebook_id")["aggregated_score"].std().fillna(0)
 
-    nb_order = sorted(agg_mean.index, key=lambda c: int("".join(filter(str.isdigit, c)) or 0))
+    nb_order = natural_notebook_order(agg_mean.index)
     means = agg_mean.loc[nb_order].values
     stds  = agg_std.loc[nb_order].values
 
@@ -1228,133 +1428,160 @@ def plot_notebook_scores_simple_c4(
 
 
 # ---------------------------------------------------------------------------
+# Figure 19 — Swapped notebook cells comparison (simple runner, complexity 4)
+# ---------------------------------------------------------------------------
 
-RUNNER_ORDER = ["simple", "cot", "agentic"]
-RUNNER_LABELS = {"simple": "Simple", "cot": "Chain-of-Thought", "agentic": "Agentic"}
+def _plot_notebook_order_single(
+    df: pd.DataFrame,
+    figures_dir: Path,
+    fmt: str,
+    show: bool,
+    score_col: str,
+    score_label: str,
+    fig_stem: str,
+):
+    """Helper: notebook-order comparison figure for a single score metric."""
+    if "notebook_order" not in df.columns:
+        logger.info(f"Skipping notebook-order comparison ({score_label}) — notebook_order column is missing.")
+        return
+
+    # Filter to simple runner, complexity 4, but keep ALL notebook orders
+    sub = df[(df["runner"] == "simple") & (df["complexity"] == 4)].copy()
+    if sub.empty:
+        logger.warning(f"Skipping notebook-order comparison ({score_label}) — no rows for simple runner / complexity 4.")
+        return
+
+    order_counts = sub["notebook_order"].value_counts()
+    notebook_orders = ordered_notebook_orders(order_counts.index.tolist())
+    if len(notebook_orders) < 2:
+        logger.info(f"Skipping notebook-order comparison ({score_label}) — fewer than 2 notebook orders in the filtered data.")
+        return
+
+    # Keep only models that appear in both notebook orders
+    model_order_counts = sub.groupby("model")["notebook_order"].nunique()
+    complete_models = model_order_counts[model_order_counts == len(notebook_orders)].index.tolist()
+    if not complete_models:
+        logger.warning(f"Skipping notebook-order comparison ({score_label}) — no model was run on all notebook orders.")
+        return
+
+    plot_df = sub[sub["model"].isin(complete_models)].copy()
+
+    model_agg = (
+        plot_df.groupby(["model", "notebook_order"])[score_col]
+        .mean()
+        .reset_index()
+    )
+    notebook_agg = (
+        plot_df.groupby(["notebook_id", "notebook_order"])[score_col]
+        .mean()
+        .reset_index()
+    )
+
+    model_order = (
+        model_agg.groupby("model")[score_col]
+        .mean()
+        .sort_values(ascending=False)
+        .index.tolist()
+    )
+    notebook_ordered = natural_notebook_order(notebook_agg["notebook_id"].unique())
+    x_models = np.arange(len(model_order))
+    x_notebooks = np.arange(len(notebook_ordered))
+    width = 0.8 / len(notebook_orders)
+    order_colors = {order: PALETTE[i % len(PALETTE)] for i, order in enumerate(notebook_orders)}
+
+    fig, (ax_models, ax_notebooks) = plt.subplots(
+        2,
+        1,
+        figsize=(max(11, 0.55 * len(model_order)), 10),
+        gridspec_kw={"height_ratios": [1.5, 1]},
+    )
+
+    for i, notebook_order_value in enumerate(notebook_orders):
+        model_slice = (
+            model_agg[model_agg["notebook_order"] == notebook_order_value]
+            .set_index("model")
+            .reindex(model_order)
+        )
+        notebook_slice = (
+            notebook_agg[notebook_agg["notebook_order"] == notebook_order_value]
+            .set_index("notebook_id")
+            .reindex(notebook_ordered)
+        )
+        offset = (i - len(notebook_orders) / 2 + 0.5) * width
+
+        ax_models.bar(
+            x_models + offset,
+            model_slice[score_col].fillna(0),
+            width,
+            label=notebook_order_label(notebook_order_value),
+            color=order_colors[notebook_order_value],
+            edgecolor="white",
+        )
+        ax_notebooks.bar(
+            x_notebooks + offset,
+            notebook_slice[score_col].fillna(0),
+            width,
+            label=notebook_order_label(notebook_order_value),
+            color=order_colors[notebook_order_value],
+            edgecolor="white",
+        )
+
+    ax_models.set_xticks(x_models)
+    ax_models.set_xticklabels([short_name(model) for model in model_order], rotation=35, ha="right")
+    ax_models.set_ylabel(f"{score_label} (%)")
+    ax_models.set_title(f"Original vs Adjacent Swap — Model Comparison ({score_label})")
+    ax_models.set_ylim(0, 100)
+    ax_models.legend(title="Notebook Order", loc="upper right")
+
+    ax_notebooks.set_xticks(x_notebooks)
+    ax_notebooks.set_xticklabels(notebook_ordered, rotation=0)
+    ax_notebooks.set_xlabel("Notebook")
+    ax_notebooks.set_ylabel(f"{score_label} (%)")
+    ax_notebooks.set_title(f"Original vs Adjacent Swap — Notebook Comparison ({score_label})")
+    ax_notebooks.set_ylim(0, 100)
+    ax_notebooks.legend(title="Notebook Order", loc="upper right")
+
+    fig.tight_layout(h_pad=3.0)
+    save_fig(fig, figures_dir, fig_stem, fmt)
+    if show:
+        plt.show()
+    plt.close(fig)
 
 
-def plot_cross_runner_comparison(
+def plot_notebook_order_comparison(
     df: pd.DataFrame,
     figures_dir: Path,
     fmt: str,
     show: bool,
     pipeline_step: str | None = None,
 ):
-    """For each model that was evaluated on all available runners, compare their
-    combined success rate (averaged over all notebooks) side-by-side, with per-notebook
-    variance shown as a secondary strip-plot overlay."""
-    runners_present = sorted(df["runner"].unique(),
-                             key=lambda r: RUNNER_ORDER.index(r) if r in RUNNER_ORDER else 99)
+    """Compare original vs adjacent-swap notebook order with separate figures
+    for train and inference success rates.
 
-    if len(runners_present) < 2:
-        logger.info("Skipping cross-runner comparison — fewer than 2 runners in data.")
-        return
-
-    # Keep only models that appear in every runner
-    model_runner_counts = df.groupby("model")["runner"].nunique()
-    complete_models = model_runner_counts[model_runner_counts == len(runners_present)].index.tolist()
-
-    if not complete_models:
-        logger.warning("Skipping cross-runner comparison — no model was run on all runners.")
-        return
-
-    logger.info(f"Cross-runner comparison: {len(complete_models)} models on {runners_present}")
-
-    sub = df[df["model"].isin(complete_models)].copy()
+    Uses the swapped-cells benchmark slice: simple runner at complexity 4.
+    """
     if pipeline_step is not None:
-        sub["aggregated_score"] = pipeline_step_values(sub, pipeline_step)
-    else:
-        sub["aggregated_score"] = (sub["train_score"] + sub["inference_score"] + sub["requirements_match_score"] * 100) / 3
-    sub["label"] = sub["model"].apply(short_name)
-
-    # ── Panel 1: grouped bar — mean combined success rate per model × runner ──
-    agg = (
-        sub.groupby(["model", "runner"])["aggregated_score"]
-        .agg(mean="mean", std="std")
-        .reset_index()
-    )
-    agg["std"] = agg["std"].fillna(0)
-    agg["label"] = agg["model"].apply(short_name)
-
-    # Sort models by their mean combined success rate across all runners
-    model_order = (
-        agg.groupby("label")["mean"]
-        .mean()
-        .sort_values(ascending=False)
-        .index.tolist()
-    )
-
-    x = np.arange(len(model_order))
-    width = 0.8 / len(runners_present)
-    runner_colors = {r: PALETTE[i] for i, r in enumerate(runners_present)}
-
-    fig, (ax_bar, ax_nb) = plt.subplots(
-        2, 1,
-        figsize=(max(10, 0.9 * len(model_order)), 10),
-        gridspec_kw={"height_ratios": [2, 1.4]},
-    )
-
-    # — Grouped bar with error bars —
-    for i, runner in enumerate(runners_present):
-        sub_r = agg[agg["runner"] == runner].set_index("label").reindex(model_order)
-        offset = (i - len(runners_present) / 2 + 0.5) * width
-        ax_bar.bar(
-            x + offset,
-            sub_r["mean"].fillna(0),
-            width,
-            yerr=sub_r["std"].fillna(0),
-            label=RUNNER_LABELS.get(runner, runner),
-            color=runner_colors[runner],
-            edgecolor="white",
-            capsize=3,
-            error_kw={"elinewidth": 1.2, "ecolor": "#444", "capthick": 1.2},
+        _plot_notebook_order_single(
+            df, figures_dir, fmt, show,
+            score_col=pipeline_step,
+            score_label=pipeline_step_label(pipeline_step),
+            fig_stem=f"19_notebook_order_comparison_{pipeline_step}",
         )
+        return
 
-    ax_bar.set_xticks(x)
-    ax_bar.set_xticklabels(model_order, rotation=30, ha="right")
-    ax_bar.set_ylabel("Success Rate (%)" if pipeline_step else "Combined Success Rate (%)")
-    ax_bar.set_title(f"Cross-Runner Model Comparison — {pipeline_step_label(pipeline_step)}" if pipeline_step else "Cross-Runner Model Comparison")
-    ax_bar.set_ylim(0, 100)
-    ax_bar.legend(title="Runner", loc="upper right")
-
-    # ── Panel 2: per-notebook combined success rate — grouped bars per runner ─
-    nb_agg = (
-        sub.groupby(["runner", "notebook_id"])["aggregated_score"]
-        .mean()
-        .reset_index()
+    _plot_notebook_order_single(
+        df, figures_dir, fmt, show,
+        score_col="train_score",
+        score_label="Train Success Rate",
+        fig_stem="19a_notebook_order_train_success",
     )
-    nb_order = sorted(
-        nb_agg["notebook_id"].unique(),
-        key=lambda c: int("".join(filter(str.isdigit, c)) or 0),
+    _plot_notebook_order_single(
+        df, figures_dir, fmt, show,
+        score_col="inference_score",
+        score_label="Inference Success Rate",
+        fig_stem="19b_notebook_order_inference_success",
     )
 
-    x_nb = np.arange(len(nb_order))
-    nb_width = 0.8 / len(runners_present)
-
-    for i, runner in enumerate(runners_present):
-        sub_r = nb_agg[nb_agg["runner"] == runner].set_index("notebook_id").reindex(nb_order)
-        offset = (i - len(runners_present) / 2 + 0.5) * nb_width
-        ax_nb.bar(
-            x_nb + offset,
-            sub_r["aggregated_score"].fillna(0),
-            nb_width,
-            label=RUNNER_LABELS.get(runner, runner),
-            color=runner_colors[runner],
-            edgecolor="white",
-        )
-
-    ax_nb.set_xticks(x_nb)
-    ax_nb.set_xticklabels(nb_order, rotation=0)
-    ax_nb.set_xlabel("Notebook")
-    ax_nb.set_ylabel("Success Rate (%)" if pipeline_step else "Combined Success Rate (%)")
-    ax_nb.set_title(f"Per-Notebook {pipeline_step_label(pipeline_step)} by Runner" if pipeline_step else "Per-Notebook Combined Success Rate by Runner")
-    ax_nb.set_ylim(0, 100)
-    ax_nb.legend(title="Runner", loc="upper right")
-    fig.tight_layout(h_pad=6.0)
-    save_fig(fig, figures_dir, f"12_cross_runner_comparison_{pipeline_step}" if pipeline_step else "12_cross_runner_comparison", fmt)
-    if show:
-        plt.show()
-    plt.close(fig)
 
 
 # ---------------------------------------------------------------------------
@@ -1388,8 +1615,7 @@ def plot_token_time_usage(metrics_path: Path, figures_dir: Path, fmt: str, show:
     sub = mdf[mdf["model"].isin(complete_models)].copy()
     sub["label"] = sub["model"].apply(short_name)
 
-    runners_present = sorted(sub["runner"].unique(),
-                             key=lambda r: RUNNER_ORDER.index(r) if r in RUNNER_ORDER else 99)
+    runners_present = ordered_runners(sub)
     runner_colors = {r: PALETTE[i] for i, r in enumerate(runners_present)}
 
     model_order = (
@@ -1467,7 +1693,7 @@ def plot_own_inference_artifact_summary(details_path: Path, figures_dir: Path, f
         logger.warning("Skipping own-inference artifact summary plot — required columns are missing.")
         return
 
-    filtered_df = df[(df["runner"] == "simple") & (df["complexity"] == 4)].copy()
+    filtered_df = filter_simple_complexity(df, complexity=4)
     if filtered_df.empty:
         logger.warning("Skipping own-inference artifact summary plot — no rows for simple runner / complexity 4.")
         return
@@ -1549,7 +1775,7 @@ def plot_own_inference_artifact_heatmap(details_path: Path, figures_dir: Path, f
         logger.warning("Skipping own-inference artifact heatmap — required columns are missing.")
         return
 
-    filtered_df = df[(df["runner"] == "simple") & (df["complexity"] == 4)].copy()
+    filtered_df = filter_simple_complexity(df, complexity=4)
     if filtered_df.empty:
         logger.warning("Skipping own-inference artifact heatmap — no rows for simple runner / complexity 4.")
         return
@@ -1577,7 +1803,7 @@ def plot_own_inference_artifact_heatmap(details_path: Path, figures_dir: Path, f
 
     pivot.index = [short_name(model) for model in pivot.index]
     pivot = pivot.loc[pivot.mean(axis=1).sort_values(ascending=False).index]
-    cols = sorted(pivot.columns, key=lambda c: int("".join(filter(str.isdigit, c)) or 0))
+    cols = natural_notebook_order(pivot.columns)
     pivot = pivot[cols]
 
     fig, ax = plt.subplots(figsize=(max(8, 0.8 * len(cols)), max(4, 0.45 * len(pivot))))
@@ -1651,12 +1877,12 @@ def plot_train_success_vs_artifact_similarity(
         logger.warning("Skipping train-success vs artifact-similarity plot — artifact detail columns are missing.")
         return
 
-    scoring_filtered = scoring_df[(scoring_df["runner"] == "simple") & (scoring_df["complexity"] == 4)].copy()
+    scoring_filtered = filter_simple_complexity(scoring_df, complexity=4)
     if scoring_filtered.empty:
         logger.warning("Skipping train-success vs artifact-similarity plot — no scoring rows for simple runner / complexity 4.")
         return
 
-    details_filtered = details_df[(details_df["runner"] == "simple") & (details_df["complexity"] == 4)].copy()
+    details_filtered = filter_simple_complexity(details_df, complexity=4)
     if details_filtered.empty:
         logger.warning("Skipping train-success vs artifact-similarity plot — no artifact rows for simple runner / complexity 4.")
         return
@@ -1821,8 +2047,8 @@ def main():
     parser = argparse.ArgumentParser(description="Generate thesis visualizations from benchmark results.")
     parser.add_argument("--output-dir", default="output", help="Path to the benchmark output directory.")
     parser.add_argument("--show", action="store_true", help="Display figures interactively.")
-    parser.add_argument("--format", choices=["pdf", "png", "both"], default="both",
-                        help="Output format for figures (default: both).")
+    parser.add_argument("--format", choices=["pdf", "png", "both"], default="png",
+                        help="Output format for figures (default: png).")
     parser.add_argument(
         "--pipeline-step",
         choices=[
@@ -1857,6 +2083,7 @@ def main():
 
     df = pd.read_csv(report_path, dtype={"complexity": int})
     df = prepare_success_rate_metrics(df)
+    df = drop_models_with_all_nan_inference_scores(df)
     logger.info(f"Loaded {len(df)} rows from {report_path}")
     logger.info(f"Models: {df['model'].nunique()} | Notebooks: {df['notebook_id'].nunique()} | "
                 f"Complexities: {sorted(df['complexity'].unique())}")
@@ -1877,6 +2104,7 @@ def main():
     plot_notebook_score_breakdown(df, figures_dir, args.format, args.show, pipeline_step=args.pipeline_step)
     plot_cross_runner_comparison(df, figures_dir, args.format, args.show, pipeline_step=args.pipeline_step)
     plot_notebook_scores_simple_c4(df, figures_dir, args.format, args.show, pipeline_step=args.pipeline_step)
+    plot_notebook_order_comparison(df, figures_dir, args.format, args.show, pipeline_step=args.pipeline_step)
 
     metrics_path = output_path / "my_metrics_summary.csv"
     plot_token_time_usage(metrics_path, figures_dir, args.format, args.show)
