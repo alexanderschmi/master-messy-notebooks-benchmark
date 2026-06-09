@@ -1,4 +1,4 @@
-# Master Messy Notebooks Benchmark
+# Messy Notebooks Benchmark
 
 A benchmark that evaluates LLMs on their ability to convert messy Jupyter notebooks into clean, production-ready Python code. Given a notebook, models must generate a `train.py`, `inference.py`, and `requirements.txt`. The generated code is then scored on whether training executes successfully and whether inference runs without error.
 
