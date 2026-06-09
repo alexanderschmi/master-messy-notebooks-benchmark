@@ -76,14 +76,6 @@ python benchmark.py --score-only
 
 # Save LLM prompt/response history to history.json
 python benchmark.py --save-history
-<<<<<<< Updated upstream
-=======
-
-# Preview migration from legacy output folders to the new layout
-python migrate_output_layout.py --dry-run
-
-# Apply the migration
-python migrate_output_layout.py
 
 # Aggregate timing and token usage metrics
 python aggregate_metrics.py
@@ -99,7 +91,6 @@ python rerun_failed_inference.py
 
 # Generate thesis-quality figures from scoring data
 python visualize.py --format png
->>>>>>> Stashed changes
 ```
 
 ### CLI Arguments
@@ -117,7 +108,6 @@ python visualize.py --format png
 | `--score-only` | off | Skip generation, run scoring only |
 | `--save-history` | off | Save LLM prompt/response history as `history.json` |
 
-<<<<<<< Updated upstream
 =======
 ### Adjacent-Swap Notebook Order
 
@@ -165,7 +155,6 @@ python migrate_output_layout.py
 By default, the migration stops on conflicts. You can also use
 `--on-conflict skip` or `--on-conflict overwrite`.
 
->>>>>>> Stashed changes
 ---
 
 ## Runners
@@ -310,7 +299,6 @@ Post-processing scripts for reporting and visualization live in `scripts/`:
 ## Project Structure
 
 ```
-<<<<<<< Updated upstream
 benchmark.py              # Entry point and orchestration
 setup.py                  # Notebook pre-execution (generates reference outputs)
 configs/
@@ -326,25 +314,3 @@ src/
   inference/              # Inference testing helpers
 scripts/                  # Post-processing analysis and visualization
 output/                   # Generated code and scoring results (git-ignored)
-=======
-benchmark.py                    # Entry point and orchestration
-aggregate_metrics.py            # Aggregate time/token metrics from metrics.json files
-evaluate_model_performance.py   # Run inference on generated artifacts and compute ML metrics
-compare_own_inference_vs_real.py # Compare generated-artifact inference vs real notebook artifacts
-rerun_failed_inference.py       # Retry failed inference-scoring rows
-visualize.py                    # Generate publication-quality figures from scoring reports
-migrate_output_layout.py        # Migrate legacy output folders to current layout
-configs/
-  config.yml                    # Models and settings
-  prompt.yml                    # Complexity-stratified prompts
-  inference.yml                 # Per-notebook inference hints
-data/
-  nb1/ … nb10/                  # Notebooks, input datasets, and reference artifacts
-src/
-  core/                         # Notebook parsing, DSPy config, file I/O, output layout, logging
-  runners/                      # BaseRunner, LLMRunner, CoTRunner, OpenHandsRunner
-  scoring/                      # Evaluator, pipeline, utilities
-  inference/                    # Inference testing helpers and notebook-specific strategies
-output/                         # Generated code, scoring results, and figures
->>>>>>> Stashed changes
-```
